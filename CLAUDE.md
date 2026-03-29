@@ -149,6 +149,31 @@ User enters the numeric device ID from the QR code sticker. The flow:
 | `climate.py` | Heater setpoint + mode |
 | `sensor.py` | Connection status + device name |
 
+## Development
+
+### Requirements
+
+Python **3.12** is required. Python 3.13 fails to install `pytest-homeassistant-custom-component` because `homeassistant` pins `lru-dict==1.3.0` which has no pre-built 3.13 wheel and requires MSVC to compile.
+
+### Setup
+
+```bash
+python3.12 -m venv .venv
+.venv/Scripts/activate      # Windows
+pip install -r requirements_test.txt
+```
+
+### Running Tests
+
+```bash
+pytest                      # unit tests (all mocked, no AWS)
+python scripts/smoke_aws.py # live AWS smoke test — provisions a real cert each run, use sparingly
+```
+
+### Windows Note
+
+`pytest-homeassistant-custom-component` calls `disable_socket(allow_unix_socket=True)` before each test. On Linux/Mac, asyncio uses AF\_UNIX internally so this is fine. On Windows, `ProactorEventLoop` falls back to TCP `socketpair()` (AF\_INET) which gets blocked. The `pytest_fixture_setup` hook in `tests/conftest.py` re-enables sockets immediately before the `event_loop` fixture is created to work around this.
+
 ## Known Unknowns (Needs Hardware Validation)
 
 - Temperature register scaling (`_TEMP_SCALE = 10.0` in `climate.py`) — may be whole degrees
