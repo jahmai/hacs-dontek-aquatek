@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dontek Aquatek Setup",
+        "description": "Enter the MAC address from the QR code sticker on your Aquatek controller.",
+        "data": {
+          "device_id": "Device ID"
+        },
+        "data_description": {
+          "device_id": "Scan the QR code sticker on your controller, or enter the number printed below it (e.g. 12345678901234567)"
+        }
+      },
+      "provision": {
+        "title": "Provisioning",
+        "description": "Registering your device with AWS IoT, please wait..."
+      }
+    },
+    "error": {
+      "invalid_device_id": "Invalid device ID. Enter the numeric ID printed below the QR code sticker on your controller.",
+      "cannot_connect": "Failed to connect to AWS IoT. Check your internet connection and try again.",
+      "provision_failed": "Certificate provisioning failed. Please try again."
+    },
+    "abort": {
+      "already_configured": "This controller is already configured."
+    }
+  },
+  "entity": {
+    "switch": {
+      "pump": { "name": "Pump {index}" },
+      "spa": { "name": "Spa" },
+      "filter": { "name": "Filter Pump" },
+      "sanitizer": { "name": "Sanitizer" },
+      "solar": { "name": "Solar" },
+      "light1": { "name": "Light 1" },
+      "light2": { "name": "Light 2" }
+    },
+    "number": {
+      "pump_speed": { "name": "Pump {index} Speed" }
+    },
+    "climate": {
+      "heater": { "name": "Heater" }
+    },
+    "sensor": {
+      "connection": { "name": "Connection" },
+      "device_name": { "name": "Device Name" }
+    }
+  }
+}
