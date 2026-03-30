@@ -82,10 +82,11 @@ REG_FILTER_PUMP = 65485
 
 # ---------------------------------------------------------------------------
 # Heater registers (57xxx range)
-REG_HEATER_TYPE = 57510         # 0=Smart Heater, 1=Heat Pump, 2=Gas
-REG_HEATER_CTRL = 57517         # 0=off, 2=auto — observed on hardware, CONFIRM which heater
-REG_HEAT_SETPOINT = 57566       # target temperature (× 10 = tenths of °C, confirm on hardware)
-REG_HEATER_MODE = 57583         # 0=off, else on
+REG_HEATER_TYPE = 57510         # 0=Smart Heater, 1=Heat Pump, 2=Gas (config, not on/off)
+REG_HEAT_PUMP_CTRL = 57517      # Heat Pump Heater on/off/auto: 0=off, 2=auto (confirmed)
+REG_GAS_HEATER = 65348          # Gas Heater on/off/auto: 0=off, 2=auto (confirmed; = 65334+14)
+REG_HEAT_SETPOINT = 57575       # Target temperature; value = °C × 2 (e.g. 32°C = 64, 33°C = 66)
+REG_HEATER_MODE = 57583         # 0=off, else on (purpose unconfirmed, may overlap with above)
 
 REG_SOLAR_ENABLED = 57585       # bit 0 = solar enabled
 

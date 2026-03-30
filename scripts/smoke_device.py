@@ -63,10 +63,12 @@ REG_NAMES: dict[int, str] = {
     57650: "Filter time 1",
     57670: "Filter time 2",
     # Heating (57xxx range)
-    57510: "Heater type (0=Smart,1=HeatPump,2=Gas)",
-    57517: "Heater ctrl? (0=off,2=auto — CONFIRM which heater)",
-    57566: "Heat setpoint (×10 = °C?)",
+    57510: "Heater type config (0=Smart,1=HeatPump,2=Gas)",
+    57517: "Heat Pump on/off/auto [confirmed] (0=off,2=auto)",
+    57575: "Heat setpoint [confirmed] (value = C x2, e.g. 32C=64)",
     57583: "Heater mode (0=off)",
+    # Gas Heater output (socket-output range, 65334+14)
+    65348: "Gas Heater on/off/auto [confirmed] (0=off,2=auto)",
     # Solar
     57585: "Solar enabled (bit 0)",
     # Device name
@@ -189,7 +191,7 @@ async def run(device_id: str, cert_data: dict, listen_secs: int, button_test: bo
 
     print(f"\n{BOLD}Connecting to AWS IoT MQTT...{RESET}")
     print(f"  endpoint : {IOT_ENDPOINT}")
-    print(f"  device   : {device_id} → mac={mac}")
+    print(f"  device   : {device_id} -> mac={mac}")
     print(f"  client_id: {client_id}")
     print(f"  topics   : {topic_status}")
     print(f"             {topic_shadow}")

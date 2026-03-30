@@ -114,12 +114,22 @@ Used for speed-controlled loads. Filter pump confirmed on hardware:
 
 ### Heating
 
+Two different heater types use fundamentally different control interfaces:
+
+**Gas Heater** — controlled via a **fireman's switch** wired to a physical output socket on the controller. Register follows the same socket-output pattern:
+
 | Register | Feature | Notes |
 |----------|---------|-------|
-| 57510 | Heater type | 0=Smart, 1=Heat Pump, 2=Gas |
-| 57517 | Heater on/off/auto | 0=off, 2=auto — **confirm which heater (gas or heat pump)** |
-| 57566 | Heat pump setpoint | Stored as tenths of °C — **confirm on hardware** |
-| 57583 | Heater mode | 0=off, else on |
+| 65348 | Gas Heater on/off/auto | 0=off, 2=auto ✓ — socket-output (65334+14) |
+
+**Heat Pump Heater** — connected via **serial cable** to the controller. Registers in the 57xxx range are the serial interface to the heat pump unit. The heat pump has its own dedicated mains power socket (not via the Dontek controller):
+
+| Register | Feature | Notes |
+|----------|---------|-------|
+| 57510 | Heater type config | 0=Smart, 1=Heat Pump, 2=Gas — informational |
+| 57517 | Heat Pump on/off/auto | 0=off, 2=auto ✓ |
+| 57575 | Setpoint | value = °C × 2 (e.g. 32°C = 64, 33°C = 66) ✓ |
+| 57583 | Heater mode | 0=off, else on — purpose unconfirmed |
 | 57650 | Filter time 1 | |
 | 57670 | Filter time 2 | |
 
@@ -221,12 +231,11 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 
 ## Known Unknowns (Needs Hardware Validation)
 
-- Temperature register scaling (`_TEMP_SCALE = 10.0` in `climate.py`) — may be whole degrees
-- Solar register bit mask — bit 0 assumed; other bits interact
-- Register 57517 — confirmed values 0 and 2 observed when toggling a heater; need to confirm whether this is Gas Heater, Heat Pump Heater, or shared
-- Gas Heater and Heat Pump Heater registers — not yet button-tested (57510 may just be type config, actual on/off may be 57517 or another register)
-- Socket config encoding — hi byte confirmed as type index for most sockets, but socket 4 decoded as type=1 (sanitiser) while hardware confirms it's Jet Pump; lo byte meaning unclear
-- Status feedback registers 160, 162, 163 — purpose confirmed (actual state echo), mapping to outputs partially confirmed
+- Solar register bit mask — `57585=65` (= 0x41, bit 0 set) observed in state dump; bit 0 = solar enabled confirmed, other bits unknown
+- Socket config encoding — hi byte confirmed as type index for sockets 2 and 5 (Sanitiser=1, Pool Light=5), but socket 4 shows hi byte=1 (Sanitiser type) while hardware confirms it's Jet Pump; lo byte meaning unclear. May mean type=1 is "generic pump output" not specifically sanitiser.
+- `57583` (Heater mode) — value=0 in state dump while HP heater was auto; purpose unclear, may overlap with 57517
+- `65487` — value=65535 in state dump, likely second VF connector (heating pump); confirm
+- Device name encoding — appears to be 2 ASCII chars per register (big-endian packed), not 1 char per register as originally assumed
 
 ## Confirmed via Live Hardware (2026-03-30)
 
@@ -238,5 +247,10 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 - **65338 = Jet Pump socket output** — 0=off, 2=auto
 - **65339 = Pool Light socket output** — 0=off, 1=on, 2=auto
 - **65485 = Filter Pump VF output** — 0=off, 65535=auto (257/513/769/1025 = speed 1–4)
+- **65348 = Gas Heater output** — 0=off, 2=auto (socket-output range: 65334+14)
+- **57517 = Heat Pump Heater** — 0=off, 2=auto
+- **57575 = Heater setpoint** — value = °C × 2 (32°C=64, 33°C=66); previous assumption of ×10 was wrong
 - Socket outputs follow 0=off, 1=on(manual), 2=auto pattern (not boolean)
 - Controller sends a `messageId="read"` echo on a lower register after each write (status feedback)
+- Feedback register = output register − 65176 (consistent across all tested sockets)
+- Socket output register range extends beyond 5 configurable sockets: gas heater at 65348 (index 14)
