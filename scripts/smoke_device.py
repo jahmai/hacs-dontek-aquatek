@@ -6,7 +6,13 @@ Usage:
     python scripts/smoke_device.py <device_id> --listen 60
     python scripts/smoke_device.py <device_id> --fresh-cert
 
-The device ID is the numeric string printed below the QR code on the controller.
+    # Button-test mode: suppress initial state dump, show only change events
+    python scripts/smoke_device.py <device_id> --button-test --listen 600
+
+The device ID can be:
+  - MAC with colons/dashes:   AA:BB:CC:DD:EE:FF
+  - MAC without separators:   aabbccddeeff
+  - Numeric QR code ID:       62678480408215041
 
 Certificates are cached in local/smoke_cert.json so you don't provision a new one
 every run (each provisioned cert is permanent in AWS IoT). Use --fresh-cert to force
@@ -34,27 +40,35 @@ IOT_POLICY_NAME = "pswpolicy"
 CERT_CACHE = Path(__file__).parent.parent / "local" / "smoke_cert.json"
 
 # ── Register name map ─────────────────────────────────────────────────────────
+# Socket output registers (REG_SOCKET_BASE=65334, socket n = 65334+n, 1-indexed)
+# Socket type is configured per-device; labels below are from hardware testing.
 REG_NAMES: dict[int, str] = {
-    # Pumps on/off (indices 0–12)
-    **{65339 + i: f"Pump {i} on/off" for i in range(12)},
-    65335: "Spa (pump 12) on/off",
-    # Pump speeds
+    # Socket outputs (0=off, 1=on, 2=auto)
+    65335: "Socket 1 output",
+    65336: "Socket 2 output [Sanitiser confirmed]",
+    65337: "Socket 3 output",
+    65338: "Socket 4 output [Jet Pump confirmed]",
+    65339: "Socket 5 output [Pool Light confirmed]",
+    # Socket type config registers (hi byte = type index from APK arrays.xml)
+    17: "Socket 1 type config",
+    18: "Socket 2 type config",
+    19: "Socket 3 type config",
+    20: "Socket 4 type config",
+    21: "Socket 5 type config",
+    # Pump speed outputs (socket 5 onwards = pump 0+)
     **{65352 + i: f"Pump {i} speed" for i in range(12)},
-    # Filtration / sanitization
-    65430: "Filter pump enabled",
-    65431: "Sanitizer enabled",
+    # VF connector — filter pump (0=off, 257/513/769/1025=speed1-4, 65535=auto)
+    65485: "Filter pump VF [confirmed]",
     # Filter times
     57650: "Filter time 1",
     57670: "Filter time 2",
-    # Heating
+    # Heating (57xxx range)
     57510: "Heater type (0=Smart,1=HeatPump,2=Gas)",
-    57566: "Heat pump setpoint (×10 = °C?)",
+    57517: "Heater ctrl? (0=off,2=auto — CONFIRM which heater)",
+    57566: "Heat setpoint (×10 = °C?)",
     57583: "Heater mode (0=off)",
     # Solar
     57585: "Solar enabled (bit 0)",
-    # Lights
-    65314: "Light 1",
-    65315: "Light 2",
     # Device name
     **{65488 + i: f"Device name byte {i}" for i in range(8)},
 }
@@ -117,7 +131,7 @@ def load_or_provision(fresh: bool) -> dict:
 
 # ── MQTT smoke test ───────────────────────────────────────────────────────────
 
-async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
+async def run(device_id: str, cert_data: dict, listen_secs: int, button_test: bool) -> None:
     from awscrt import mqtt
     from awsiot import mqtt_connection_builder
 
@@ -128,29 +142,40 @@ async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
 
     register_state: dict[int, int] = {}
     message_count = 0
-    connected = asyncio.Event()
-    loop = asyncio.get_running_loop()
+    # In button-test mode suppress the initial state dump (first burst on connect).
+    # We ignore messages until the stream goes quiet for a moment: track connect time
+    # and skip for the first DUMP_SETTLE_SECS seconds.
+    DUMP_SETTLE_SECS = 8
+    connect_time: float = 0.0
 
     def on_message(topic, payload, **kwargs):
         nonlocal message_count
         try:
             data = json.loads(payload)
+            msg_id = data.get("messageId", "?")
             reg = int(data["modbusReg"])
             vals = [int(v) for v in data["modbusVal"]]
         except Exception as e:
             print(f"  [parse error] {e}: {payload[:80]}")
             return
 
+        # Update register state regardless of suppression
+        for offset, val in enumerate(vals):
+            register_state[reg + offset] = val
+
+        # In button-test mode, skip the initial dump
+        if button_test and connect_time and (time.time() - connect_time < DUMP_SETTLE_SECS):
+            return
+
         message_count += 1
         ts = time.strftime("%H:%M:%S")
-
-        for offset, val in enumerate(vals):
-            r = reg + offset
-            register_state[r] = val
-
         label = reg_label(reg)
         vals_str = ", ".join(str(v) for v in vals)
-        print(f"  {CYAN}{ts}{RESET}  reg={reg} ({label})  val=[{vals_str}]")
+        if button_test:
+            # Compact format for reading register changes while pressing buttons
+            print(f"{ts}  [{msg_id:<5}] reg={reg:>6}  val=[{vals_str}]  {label}")
+        else:
+            print(f"  {CYAN}{ts}{RESET}  reg={reg} ({label})  val=[{vals_str}]")
 
     def on_shadow(topic, payload, **kwargs):
         ts = time.strftime("%H:%M:%S")
@@ -181,6 +206,7 @@ async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
     )
 
     await asyncio.wrap_future(connection.connect())
+    connect_time = time.time()
     print(f"{GREEN}Connected.{RESET}")
 
     sub_future, _ = connection.subscribe(
@@ -197,7 +223,11 @@ async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
     )
     await asyncio.wrap_future(shadow_future)
 
-    print(f"\n{BOLD}Listening for {listen_secs}s — waiting for device messages...{RESET}\n")
+    if button_test:
+        print(f"\n{BOLD}READY — button-test mode, suppressing initial dump ({DUMP_SETTLE_SECS}s){RESET}")
+        print(f"Press appliance buttons in the app. Each change prints one line.\n")
+    else:
+        print(f"\n{BOLD}Listening for {listen_secs}s — waiting for device messages...{RESET}\n")
     await asyncio.sleep(listen_secs)
 
     await asyncio.wrap_future(connection.disconnect())
@@ -229,15 +259,17 @@ async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Aquatek device smoke test")
-    parser.add_argument("device_id", help="Numeric device ID from QR code sticker")
+    parser.add_argument("device_id", help="MAC address or numeric QR code ID")
     parser.add_argument("--listen", type=int, default=30,
                         help="Seconds to listen for messages (default: 30)")
     parser.add_argument("--fresh-cert", action="store_true",
                         help="Force new AWS IoT certificate (don't reuse cache)")
+    parser.add_argument("--button-test", action="store_true",
+                        help="Suppress initial state dump; print only change events (for mapping registers)")
     args = parser.parse_args()
 
     cert_data = load_or_provision(args.fresh_cert)
-    asyncio.run(run(args.device_id, cert_data, args.listen))
+    asyncio.run(run(args.device_id, cert_data, args.listen, args.button_test))
 
 
 if __name__ == "__main__":

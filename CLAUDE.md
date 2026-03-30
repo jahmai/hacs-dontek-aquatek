@@ -77,58 +77,85 @@ Multi-value messages set consecutive registers starting at `modbusReg`.
 
 ## Modbus Register Map
 
-### Pumps
-| Register | Feature |
-|----------|---------|
-| `0xFF3B + i` (65339+i) | Pump i on/off (i = 0–11) |
-| `0xFF48 + i` (65352+i) | Pump i speed level (0–3) |
-| 65335 | Spa pump on/off (pump index 12) |
+### Socket Architecture
 
-### Filtration & Sanitization
+The controller has **5 configurable output sockets**. Each socket is assigned an appliance type in the app (sanitiser, pool light, jet pump, etc.) and the assignment is stored on-device. The HA integration must auto-discover socket→appliance mappings at startup by reading config registers.
+
 | Register | Feature |
 |----------|---------|
-| 65430 | Filter pump enabled |
-| 65431 | Sanitizer enabled |
-| 57650 | Filter time 1 |
-| 57670 | Filter time 2 |
+| `65334 + n` (n = 1–5) | Socket n output (0=off, 1=on, 2=auto) |
+| `16 + n` (n = 1–5) | Socket n type config — hi byte = type index (see below) |
+
+**Socket type indices** (from APK `arrays.xml` `socket_type_options`):
+
+| Index | Appliance |
+|-------|-----------|
+| 0 | None |
+| 1 | Sanitiser |
+| 2 | Filter Pump |
+| 3 | Cleaning Pump |
+| 4 | Blower |
+| 5 | Pool Light |
+| 12 | Jet Pump |
+| 13 | Heating Pump |
+
+**Confirmed socket assignments** on tested device:
+- Socket 2 → reg 65336 → Sanitiser ✓
+- Socket 4 → reg 65338 → Jet Pump ✓
+- Socket 5 → reg 65339 → Pool Light ✓
+
+### VF Connectors (variable-frequency drives, 2 total)
+
+Used for speed-controlled loads. Filter pump confirmed on hardware:
+
+| Register | Feature | Values |
+|----------|---------|--------|
+| 65485 | Filter pump | 0=off, 257=spd1, 513=spd2, 769=spd3, 1025=spd4, 65535=auto |
 
 ### Heating
+
 | Register | Feature | Notes |
 |----------|---------|-------|
 | 57510 | Heater type | 0=Smart, 1=Heat Pump, 2=Gas |
+| 57517 | Heater on/off/auto | 0=off, 2=auto — **confirm which heater (gas or heat pump)** |
 | 57566 | Heat pump setpoint | Stored as tenths of °C — **confirm on hardware** |
 | 57583 | Heater mode | 0=off, else on |
+| 57650 | Filter time 1 | |
+| 57670 | Filter time 2 | |
 
 ### Solar
 | Register | Feature | Notes |
 |----------|---------|-------|
 | 57585 | Solar enabled | Bit 0 = enabled; other bits used — **mask needed** |
 
-### Lights
-| Register | Feature |
-|----------|---------|
-| 65314 | Light 1 |
-| 65315 | Light 2 |
-
 ### Device Info
 | Register | Feature |
 |----------|---------|
 | 65488–65495 | Device name (8 ASCII bytes) |
 
+### Status Feedback Registers
+
+After each write command, the controller sends a `messageId="read"` response on a lower-numbered register. These appear to be the "actual state" feedback for each output:
+
+| Output register | Feedback register | Observed |
+|-----------------|-------------------|---------|
+| 65336 (Sanitiser) | 160 | val=0 after off/auto |
+| 65338 (Jet Pump) | 162 | val=0 after off |
+| 65339 (Pool Light) | 163 | val=0 off / val=1 on |
+
 ## Home Assistant Integration
 
 ### Entities
 
-| Platform | Entity | Register |
-|----------|--------|---------|
-| `switch` | Pump 1–12 | 65339–65350 |
-| `switch` | Spa | 65335 |
-| `switch` | Filter Pump | 65430 |
-| `switch` | Sanitizer | 65431 |
-| `switch` | Solar | 57585 |
-| `switch` | Light 1 / Light 2 | 65314, 65315 |
-| `number` | Pump 1–12 Speed | 65352–65363 |
-| `climate` | Heater | 57566, 57583 |
+Entities must be **auto-discovered** from the socket config registers on connect. The static pump/light map in the original design is wrong — socket assignments vary per device.
+
+**Planned auto-discovered entities:**
+
+| Platform | Entity | Source |
+|----------|--------|--------|
+| `switch` | One per configured socket | Socket type → appliance name; register = 65334+n |
+| `number` | Filter pump speed | VF reg 65485 (0/257/513/769/1025/65535) |
+| `climate` | Heater | 57517 (mode), 57566 (setpoint) |
 | `sensor` | Connection Status | — |
 | `sensor` | Device Name | 65488–65495 |
 
@@ -195,15 +222,21 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 ## Known Unknowns (Needs Hardware Validation)
 
 - Temperature register scaling (`_TEMP_SCALE = 10.0` in `climate.py`) — may be whole degrees
-- Pump speed range — currently 0–3 levels; may differ by pump model
 - Solar register bit mask — bit 0 assumed; other bits interact
-- Registers 65336, 65338 — observed on live hardware, pump-like on/off/2 pattern, not yet mapped
-- Register 65485 — observed on live hardware, appears to be a multi-bit status/flags field (values: 0, 257, 513, 769, 1025, 65535)
-- Register 57517 — observed on live hardware, near heater range, values 0/1/2
+- Register 57517 — confirmed values 0 and 2 observed when toggling a heater; need to confirm whether this is Gas Heater, Heat Pump Heater, or shared
+- Gas Heater and Heat Pump Heater registers — not yet button-tested (57510 may just be type config, actual on/off may be 57517 or another register)
+- Socket config encoding — hi byte confirmed as type index for most sockets, but socket 4 decoded as type=1 (sanitiser) while hardware confirms it's Jet Pump; lo byte meaning unclear
+- Status feedback registers 160, 162, 163 — purpose confirmed (actual state echo), mapping to outputs partially confirmed
 
-## Confirmed via Live Hardware
+## Confirmed via Live Hardware (2026-03-30)
 
-- Unauthenticated Cognito Identity Pool access still works (tested 2026-03-30)
+- Unauthenticated Cognito Identity Pool access still works
 - MQTT topic prefix is `dontek{mac}` — without this prefix the broker closes the connection
 - QR code numeric ID = MAC address encoded as big-endian integer (upper 6 bytes = MAC, lower byte unknown)
 - `pswpolicy` restricts subscribe/publish to `dontek{mac}/` prefix only
+- **65336 = Sanitiser socket output** — 0=off, 2=auto
+- **65338 = Jet Pump socket output** — 0=off, 2=auto
+- **65339 = Pool Light socket output** — 0=off, 1=on, 2=auto
+- **65485 = Filter Pump VF output** — 0=off, 65535=auto (257/513/769/1025 = speed 1–4)
+- Socket outputs follow 0=off, 1=on(manual), 2=auto pattern (not boolean)
+- Controller sends a `messageId="read"` echo on a lower register after each write (status feedback)
