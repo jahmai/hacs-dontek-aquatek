@@ -1,0 +1,244 @@
+"""
+Smoke test — connect to a real Aquatek device via AWS IoT MQTT and dump live state.
+
+Usage:
+    python scripts/smoke_device.py <device_id>
+    python scripts/smoke_device.py <device_id> --listen 60
+    python scripts/smoke_device.py <device_id> --fresh-cert
+
+The device ID is the numeric string printed below the QR code on the controller.
+
+Certificates are cached in local/smoke_cert.json so you don't provision a new one
+every run (each provisioned cert is permanent in AWS IoT). Use --fresh-cert to force
+a new one.
+
+Requirements:
+    pip install boto3 awsiotsdk
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+import time
+import uuid
+from pathlib import Path
+
+# ── Constants (mirrors const.py) ──────────────────────────────────────────────
+COGNITO_POOL_ID = "ap-southeast-2:c45f75ed-a7e5-4a4f-b27a-ac3941f6d9bf"
+AWS_REGION = "ap-southeast-2"
+IOT_ENDPOINT = "a219g53ny7vwvd-ats.iot.ap-southeast-2.amazonaws.com"
+IOT_POLICY_NAME = "pswpolicy"
+
+CERT_CACHE = Path(__file__).parent.parent / "local" / "smoke_cert.json"
+
+# ── Register name map ─────────────────────────────────────────────────────────
+REG_NAMES: dict[int, str] = {
+    # Pumps on/off (indices 0–12)
+    **{65339 + i: f"Pump {i} on/off" for i in range(12)},
+    65335: "Spa (pump 12) on/off",
+    # Pump speeds
+    **{65352 + i: f"Pump {i} speed" for i in range(12)},
+    # Filtration / sanitization
+    65430: "Filter pump enabled",
+    65431: "Sanitizer enabled",
+    # Filter times
+    57650: "Filter time 1",
+    57670: "Filter time 2",
+    # Heating
+    57510: "Heater type (0=Smart,1=HeatPump,2=Gas)",
+    57566: "Heat pump setpoint (×10 = °C?)",
+    57583: "Heater mode (0=off)",
+    # Solar
+    57585: "Solar enabled (bit 0)",
+    # Lights
+    65314: "Light 1",
+    65315: "Light 2",
+    # Device name
+    **{65488 + i: f"Device name byte {i}" for i in range(8)},
+}
+
+
+def reg_label(reg: int) -> str:
+    return REG_NAMES.get(reg, f"reg {reg}")
+
+
+# ── Terminal colours ──────────────────────────────────────────────────────────
+GREEN  = "\033[32m"
+YELLOW = "\033[33m"
+CYAN   = "\033[36m"
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+
+
+# ── Certificate provisioning ──────────────────────────────────────────────────
+
+def provision_certificates() -> dict:
+    """Get Cognito credentials and create a new IoT certificate."""
+    import boto3
+
+    print(f"{YELLOW}Provisioning new AWS IoT certificate...{RESET}")
+    cognito = boto3.client("cognito-identity", region_name=AWS_REGION)
+    identity_id = cognito.get_id(IdentityPoolId=COGNITO_POOL_ID)["IdentityId"]
+    creds = cognito.get_credentials_for_identity(IdentityId=identity_id)["Credentials"]
+
+    iot = boto3.client(
+        "iot",
+        region_name=AWS_REGION,
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretKey"],
+        aws_session_token=creds["SessionToken"],
+    )
+    result = iot.create_keys_and_certificate(setAsActive=True)
+    iot.attach_policy(policyName=IOT_POLICY_NAME, target=result["certificateArn"])
+
+    cert_data = {
+        "cert_id": result["certificateId"],
+        "cert_pem": result["certificatePem"],
+        "private_key": result["keyPair"]["PrivateKey"],
+    }
+    print(f"{GREEN}  cert_id: {cert_data['cert_id'][:16]}...{RESET}")
+    return cert_data
+
+
+def load_or_provision(fresh: bool) -> dict:
+    if not fresh and CERT_CACHE.exists():
+        data = json.loads(CERT_CACHE.read_text())
+        print(f"{GREEN}Reusing cached cert: {data['cert_id'][:16]}...{RESET}")
+        return data
+
+    CERT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    data = provision_certificates()
+    CERT_CACHE.write_text(json.dumps(data, indent=2))
+    print(f"  Cached to {CERT_CACHE}")
+    return data
+
+
+# ── MQTT smoke test ───────────────────────────────────────────────────────────
+
+async def run(device_id: str, cert_data: dict, listen_secs: int) -> None:
+    from awscrt import mqtt
+    from awsiot import mqtt_connection_builder
+
+    mac = device_id.replace(":", "").replace("-", "").lower()
+    topic_status = f"dontek{mac}/status/psw"
+    topic_shadow = f"$aws/things/{mac.upper()}_VERSION/shadow/get/+"
+    client_id = f"aquatek-{mac}-{uuid.uuid4().hex[:8]}"
+
+    register_state: dict[int, int] = {}
+    message_count = 0
+    connected = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def on_message(topic, payload, **kwargs):
+        nonlocal message_count
+        try:
+            data = json.loads(payload)
+            reg = int(data["modbusReg"])
+            vals = [int(v) for v in data["modbusVal"]]
+        except Exception as e:
+            print(f"  [parse error] {e}: {payload[:80]}")
+            return
+
+        message_count += 1
+        ts = time.strftime("%H:%M:%S")
+
+        for offset, val in enumerate(vals):
+            r = reg + offset
+            register_state[r] = val
+
+        label = reg_label(reg)
+        vals_str = ", ".join(str(v) for v in vals)
+        print(f"  {CYAN}{ts}{RESET}  reg={reg} ({label})  val=[{vals_str}]")
+
+    def on_shadow(topic, payload, **kwargs):
+        ts = time.strftime("%H:%M:%S")
+        print(f"  {CYAN}{ts}{RESET}  [shadow] {payload[:120]}")
+
+    def on_interrupted(connection, error, **kwargs):
+        print(f"\n{YELLOW}  MQTT interrupted: {error}{RESET}")
+
+    def on_resumed(connection, return_code, session_present, **kwargs):
+        print(f"\n{GREEN}  MQTT resumed{RESET}")
+
+    print(f"\n{BOLD}Connecting to AWS IoT MQTT...{RESET}")
+    print(f"  endpoint : {IOT_ENDPOINT}")
+    print(f"  device   : {device_id} → mac={mac}")
+    print(f"  client_id: {client_id}")
+    print(f"  topics   : {topic_status}")
+    print(f"             {topic_shadow}")
+
+    connection = mqtt_connection_builder.mtls_from_bytes(
+        endpoint=IOT_ENDPOINT,
+        cert_bytes=cert_data["cert_pem"].encode(),
+        pri_key_bytes=cert_data["private_key"].encode(),
+        client_id=client_id,
+        clean_session=False,
+        keep_alive_secs=60,
+        on_connection_interrupted=on_interrupted,
+        on_connection_resumed=on_resumed,
+    )
+
+    await asyncio.wrap_future(connection.connect())
+    print(f"{GREEN}Connected.{RESET}")
+
+    sub_future, _ = connection.subscribe(
+        topic=topic_status,
+        qos=mqtt.QoS.AT_MOST_ONCE,
+        callback=on_message,
+    )
+    await asyncio.wrap_future(sub_future)
+
+    shadow_future, _ = connection.subscribe(
+        topic=topic_shadow,
+        qos=mqtt.QoS.AT_MOST_ONCE,
+        callback=on_shadow,
+    )
+    await asyncio.wrap_future(shadow_future)
+
+    print(f"\n{BOLD}Listening for {listen_secs}s — waiting for device messages...{RESET}\n")
+    await asyncio.sleep(listen_secs)
+
+    await asyncio.wrap_future(connection.disconnect())
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    print(f"\n{BOLD}── Summary ────────────────────────────────────────────────{RESET}")
+    print(f"  Messages received : {message_count}")
+    print(f"  Registers seen    : {len(register_state)}")
+
+    if register_state:
+        print(f"\n  {BOLD}Register state snapshot:{RESET}")
+        for reg in sorted(register_state):
+            val = register_state[reg]
+            print(f"    {reg:>6}  {val:>6}   {reg_label(reg)}")
+
+        # Device name
+        chars = []
+        for i in range(8):
+            v = register_state.get(65488 + i)
+            if v and v != 0:
+                chars.append(chr(v))
+        if chars:
+            print(f"\n  Device name: {''.join(chars)!r}")
+    else:
+        print(f"\n  {YELLOW}No messages received — is the device ID correct and the device online?{RESET}")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="Aquatek device smoke test")
+    parser.add_argument("device_id", help="Numeric device ID from QR code sticker")
+    parser.add_argument("--listen", type=int, default=30,
+                        help="Seconds to listen for messages (default: 30)")
+    parser.add_argument("--fresh-cert", action="store_true",
+                        help="Force new AWS IoT certificate (don't reuse cache)")
+    args = parser.parse_args()
+
+    cert_data = load_or_provision(args.fresh_cert)
+    asyncio.run(run(args.device_id, cert_data, args.listen))
+
+
+if __name__ == "__main__":
+    main()

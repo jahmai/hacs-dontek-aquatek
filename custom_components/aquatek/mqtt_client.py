@@ -29,6 +29,10 @@ from .const import (
     WATCHDOG_TIMEOUT,
 )
 
+def _normalise_mac(mac: str) -> str:
+    """Return lowercase no-colon MAC (e.g. 'aabbccddeeff')."""
+    return mac.replace(":", "").replace("-", "").lower()
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -54,7 +58,8 @@ class AquatekMQTTClient:
         message_callback: MessageCallback,
         state_callback: StateCallback,
     ) -> None:
-        self._mac = mac
+        mac_norm = _normalise_mac(mac)
+        self._mac = mac_norm
         self._cert_pem = cert_pem
         self._private_key = private_key
         self._message_callback = message_callback
@@ -67,12 +72,12 @@ class AquatekMQTTClient:
         self._last_message_time: float = 0.0
         self._loop: asyncio.AbstractEventLoop | None = None
 
-        self._topic_status = TOPIC_STATUS.format(mac=mac)
-        self._topic_cmd = TOPIC_CMD.format(mac=mac)
-        self._topic_shadow = TOPIC_SHADOW.format(mac_upper=mac.upper())
+        self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
+        self._topic_cmd = TOPIC_CMD.format(mac=mac_norm)
+        self._topic_shadow = TOPIC_SHADOW.format(mac_upper=mac_norm.upper())
 
         # Unique client ID per session — matches app behaviour (UUID per session)
-        self._client_id = f"aquatek-{mac.replace(':', '').lower()}-{uuid.uuid4().hex[:8]}"
+        self._client_id = f"aquatek-{mac_norm}-{uuid.uuid4().hex[:8]}"
 
     @property
     def state(self) -> ConnectionState:

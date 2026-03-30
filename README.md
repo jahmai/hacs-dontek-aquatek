@@ -8,7 +8,7 @@ Communicates via AWS IoT MQTT (cloud). No local API is available.
 
 - Home Assistant 2024.1 or later
 - [HACS](https://hacs.xyz) installed
-- The numeric device ID from the QR code sticker on your controller
+- The MAC address or numeric QR code ID from the sticker on your controller
 
 ## Installation
 
@@ -19,14 +19,19 @@ Communicates via AWS IoT MQTT (cloud). No local API is available.
 
 ## Configuration
 
-When prompted, enter the **numeric device ID** printed below the QR code on your controller:
+When prompted, enter the identifier from the sticker on your controller:
 
 ```
 POOL+ MANAGER
 4.10.2024
-MAC SN:XXXXX
-XXXXXXXXXXXXXXXXX   ← this number
+MAC SN:XXXXX          ← MAC address (use this, or...)
+XXXXXXXXXXXXXXXXX     ← ...the numeric QR code ID (either works)
 ```
+
+Accepted formats:
+- MAC with colons — `AA:BB:CC:DD:EE:FF`
+- MAC without separators — `aabbccddeeff`
+- Numeric QR code ID — the long number printed below the QR code
 
 The integration will automatically provision an AWS IoT certificate and connect to your controller.
 

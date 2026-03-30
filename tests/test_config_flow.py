@@ -6,35 +6,52 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.aquatek.config_flow import _parse_device_id
-from custom_components.aquatek.const import CONF_DEVICE_ID, DOMAIN
+from custom_components.aquatek.config_flow import _parse_mac
+from custom_components.aquatek.const import CONF_MAC, DOMAIN
 
-from .conftest import DEVICE_ID, FAKE_CERTS
+from .conftest import MAC, FAKE_CERTS
 
 
 # ---------------------------------------------------------------------------
-# _parse_device_id
+# _parse_mac
 # ---------------------------------------------------------------------------
 
 
-def test_parse_device_id_valid():
-    assert _parse_device_id("12345678901234567") == "12345678901234567"
+def test_parse_mac_colon_format():
+    assert _parse_mac("AA:BB:CC:DD:EE:FF") == "aabbccddeeff"
 
 
-def test_parse_device_id_strips_whitespace():
-    assert _parse_device_id("  12345  ") == "12345"
+def test_parse_mac_dash_format():
+    assert _parse_mac("AA-BB-CC-DD-EE-FF") == "aabbccddeeff"
 
 
-def test_parse_device_id_rejects_non_numeric():
-    assert _parse_device_id("ABCDEF") is None
+def test_parse_mac_no_separator():
+    assert _parse_mac("aabbccddeeff") == "aabbccddeeff"
 
 
-def test_parse_device_id_rejects_alphanumeric():
-    assert _parse_device_id("1234abc") is None
+def test_parse_mac_strips_whitespace():
+    assert _parse_mac("  aa:bb:cc:dd:ee:ff  ") == "aabbccddeeff"
 
 
-def test_parse_device_id_rejects_empty():
-    assert _parse_device_id("") is None
+def test_parse_mac_lowercase_output():
+    assert _parse_mac("AA:BB:CC:DD:EE:FF") == "aabbccddeeff"
+
+
+def test_parse_mac_numeric_qr_id():
+    # 62678480408215041 = 0xdeadbeefcafe01 → first 6 bytes → deadbeefcafe
+    assert _parse_mac("62678480408215041") == "deadbeefcafe"
+
+
+def test_parse_mac_rejects_garbage():
+    assert _parse_mac("not-a-mac") is None
+
+
+def test_parse_mac_rejects_empty():
+    assert _parse_mac("") is None
+
+
+def test_parse_mac_rejects_short_numeric():
+    assert _parse_mac("12345") is None  # fewer than 12 hex digits when converted
 
 
 # ---------------------------------------------------------------------------
@@ -52,18 +69,18 @@ async def test_step_user_shows_form(hass):
     assert result["errors"] == {}
 
 
-async def test_step_user_invalid_id_shows_error(hass):
-    """Non-numeric device ID shows validation error without advancing."""
+async def test_step_user_invalid_mac_shows_error(hass):
+    """Invalid MAC shows validation error without advancing."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {CONF_DEVICE_ID: "not-a-number"},
+        {CONF_MAC: "not-a-mac"},
     )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
-    assert "device_id" in result["errors"]
+    assert CONF_MAC in result["errors"]
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +89,7 @@ async def test_step_user_invalid_id_shows_error(hass):
 
 
 async def test_full_flow_creates_entry(hass):
-    """Valid device ID + successful provisioning creates a config entry."""
+    """Valid MAC + successful provisioning creates a config entry."""
     with patch(
         "custom_components.aquatek.config_flow.provision_and_store",
         return_value=FAKE_CERTS,
@@ -82,19 +99,40 @@ async def test_full_flow_creates_entry(hass):
         )
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_DEVICE_ID: DEVICE_ID},
+            {CONF_MAC: "AA:BB:CC:DD:EE:FF"},
         )
         assert result["type"] == FlowResultType.SHOW_PROGRESS
         assert result["step_id"] == "provision"
 
-        # Let the provision task complete
         await hass.async_block_till_done()
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Aquatek {DEVICE_ID}"
-    assert result["data"][CONF_DEVICE_ID] == DEVICE_ID
+    assert result["title"] == f"Aquatek aabbccddeeff"
+    assert result["data"][CONF_MAC] == "aabbccddeeff"
+
+
+async def test_full_flow_accepts_numeric_qr_id(hass):
+    """Numeric QR code ID is accepted and decoded to MAC."""
+    with patch(
+        "custom_components.aquatek.config_flow.provision_and_store",
+        return_value=FAKE_CERTS,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_MAC: "62678480408215041"},
+        )
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MAC] == "deadbeefcafe"
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +141,11 @@ async def test_full_flow_creates_entry(hass):
 
 
 async def test_flow_aborts_on_duplicate_device(hass):
-    """Starting a flow for an already-configured device ID aborts."""
+    """Starting a flow for an already-configured MAC aborts."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_DEVICE_ID: DEVICE_ID},
-        unique_id=DEVICE_ID,
+        data={CONF_MAC: MAC},
+        unique_id=MAC,
     )
     entry.add_to_hass(hass)
 
@@ -120,7 +158,7 @@ async def test_flow_aborts_on_duplicate_device(hass):
         )
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_DEVICE_ID: DEVICE_ID},
+            {CONF_MAC: MAC},
         )
 
     assert result["type"] == FlowResultType.ABORT
@@ -143,7 +181,7 @@ async def test_full_flow_provision_failure_shows_error(hass):
         )
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_DEVICE_ID: DEVICE_ID},
+            {CONF_MAC: MAC},
         )
         assert result["type"] == FlowResultType.SHOW_PROGRESS
 

@@ -9,7 +9,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .auth import delete_certificates, load_or_provision_certificates
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import CONF_MAC, DOMAIN
 from .coordinator import AquatekCoordinator
 from .mqtt_client import AquatekMQTTClient
 
@@ -25,7 +25,7 @@ PLATFORMS = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Aquatek from a config entry."""
-    mac = entry.data[CONF_DEVICE_ID]
+    mac = entry.data[CONF_MAC]
 
     # Load or provision AWS IoT certificates
     try:

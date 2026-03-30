@@ -16,22 +16,41 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
 from .auth import provision_and_store
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import CONF_MAC, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# The QR code encodes a numeric device ID (e.g. "12345678901234567").
-_NUMERIC_ID_RE = re.compile(r"^\d+$")
+# Accept: "AA:BB:CC:DD:EE:FF", "aa:bb:cc:dd:ee:ff", "aabbccddeeff", "AA-BB-CC-DD-EE-FF"
+_MAC_RE = re.compile(r"^([0-9a-fA-F]{2}[:\-]?){5}[0-9a-fA-F]{2}$")
 
 
-def _parse_device_id(raw: str) -> str | None:
-    """Validate and return the numeric device ID, or None if invalid."""
+def _parse_mac(raw: str) -> str | None:
+    """Parse any supported input to a lowercase no-colon MAC (e.g. 'aabbccddeeff').
+
+    Accepted formats:
+      - MAC with colons/dashes  — "AA:BB:CC:DD:EE:FF" or "AA-BB-CC-DD-EE-FF"
+      - MAC without separators  — "aabbccddeeff"
+      - QR-code numeric ID      — e.g. "62678480408215041" (integer whose upper
+                                   6 bytes encode the MAC, as printed on the
+                                   controller sticker)
+    """
     raw = raw.strip()
-    return raw if _NUMERIC_ID_RE.match(raw) else None
+
+    # Standard MAC formats
+    if _MAC_RE.match(raw):
+        return raw.replace(":", "").replace("-", "").lower()
+
+    # Numeric QR-code ID: convert to hex, take first 12 nibbles (6 bytes)
+    if raw.isdigit():
+        hex_str = f"{int(raw):x}"
+        if len(hex_str) >= 12:
+            return hex_str[:12].lower()
+
+    return None
 
 
 STEP_USER_SCHEMA = vol.Schema(
-    {vol.Required(CONF_DEVICE_ID): str}
+    {vol.Required(CONF_MAC): str}
 )
 
 
@@ -41,7 +60,7 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._device_id: str = ""
+        self._mac: str = ""
         self._provision_task = None
 
     async def async_step_user(
@@ -50,16 +69,15 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            device_id = _parse_device_id(user_input[CONF_DEVICE_ID])
+            mac = _parse_mac(user_input[CONF_MAC])
 
-            if device_id is None:
-                errors[CONF_DEVICE_ID] = "invalid_device_id"
+            if mac is None:
+                errors[CONF_MAC] = "invalid_mac"
             else:
-                # Abort if this controller is already set up
-                await self.async_set_unique_id(device_id)
+                await self.async_set_unique_id(mac)
                 self._abort_if_unique_id_configured()
 
-                self._device_id = device_id
+                self._mac = mac
                 return await self.async_step_provision()
 
         return self.async_show_form(
@@ -94,11 +112,10 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Create the config entry after successful provisioning."""
-        # cert_id was stashed on the instance by _do_provision
         return self.async_create_entry(
-            title=f"Aquatek {self._device_id}",
+            title=f"Aquatek {self._mac}",
             data={
-                CONF_DEVICE_ID: self._device_id,
+                CONF_MAC: self._mac,
             },
         )
 
@@ -114,6 +131,4 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _do_provision(self) -> None:
         """Run provisioning and store certs — called as an HA task."""
-        # We use a temporary entry ID during flow; certs are re-keyed on entry creation
-        # if needed. For now, use the MAC as the storage key during provisioning.
-        await provision_and_store(self.hass, self._device_id)
+        await provision_and_store(self.hass, self._mac)

@@ -36,23 +36,33 @@ Keystore password (from device firmware): `d0nt3k_2k22`
 
 ### Device Identity
 
-The device is identified by a **numeric ID** encoded in the QR code sticker on the controller. This is printed below the QR code.
+The device is identified by its **MAC address** (lowercase, no colons — e.g. `deadbeefcafe`).
 
-Example sticker:
+The sticker on the controller shows both:
 ```
 POOL+ MANAGER
 4.10.2024
-MAC SN:XXXXX
-XXXXXXXXXXXXXXXXX
+MAC SN:XXXXX          ← MAC address (colons may or may not be printed)
+XXXXXXXXXXXXXXXXX     ← numeric QR code ID
 ```
+
+The **numeric QR code ID** is the MAC address encoded as a big-endian integer in its upper 6 bytes. For example `62678480408215041` → hex `deadbeefcafe01` → MAC `deadbeefcafe`. The integration accepts either format and normalises to the no-colon lowercase MAC.
+
+Internally the config entry stores `CONF_MAC` (the normalised MAC), not the QR code number.
 
 ### MQTT Topics
 
+All topics use a `dontek` prefix followed by the MAC (confirmed against live hardware):
+
 | Direction | Topic | Purpose |
 |-----------|-------|---------|
-| Subscribe | `{device_id}/status/psw` | Device pushes state updates |
-| Publish | `{device_id}/cmd/psw` | Send commands to device |
-| Subscribe | `$aws/things/{DEVICE_ID}_VERSION/shadow/get/+` | Firmware version (uppercased) |
+| Subscribe | `dontek{mac}/status/psw` | Device pushes state updates |
+| Publish | `dontek{mac}/cmd/psw` | Send commands to device |
+| Subscribe | `$aws/things/{MAC_UPPER}_VERSION/shadow/get/+` | Firmware version (uppercased) |
+
+`{mac}` is lowercase no-colon hex (e.g. `deadbeefcafe`).
+
+The `pswpolicy` IoT policy grants `iot:Connect`, `iot:Subscribe`, and `iot:Publish` scoped to the `dontek{mac}/` prefix. Subscribing to any topic without this prefix is denied — the broker drops the connection immediately after the SUBSCRIBE packet.
 
 ### Message Format
 
@@ -124,8 +134,13 @@ Multi-value messages set consecutive registers starting at `modbusReg`.
 
 ### Config Flow
 
-User enters the numeric device ID from the QR code sticker. The flow:
-1. Validates the ID (must be numeric)
+User enters the device identifier from the sticker. Accepted formats:
+- MAC with colons/dashes — `AA:BB:CC:DD:EE:FF` or `AA-BB-CC-DD-EE-FF`
+- MAC without separators — `aabbccddeeff`
+- Numeric QR code ID — e.g. `62678480408215041` (decoded to MAC automatically)
+
+The flow:
+1. Parses and normalises input to a lowercase no-colon MAC (`CONF_MAC`)
 2. Provisions an AWS IoT certificate (Cognito → IoT → attach policy)
 3. Creates the config entry
 
@@ -168,7 +183,10 @@ pip install -r requirements_test.txt
 ```bash
 pytest                      # unit tests (all mocked, no AWS)
 python scripts/smoke_aws.py # live AWS smoke test — provisions a real cert each run, use sparingly
+python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real device and print live messages
 ```
+
+`smoke_device.py` caches the provisioned cert in `local/smoke_cert.json` so repeated runs reuse it. Use `--fresh-cert` to force a new one.
 
 ### Windows Note
 
@@ -179,4 +197,13 @@ python scripts/smoke_aws.py # live AWS smoke test — provisions a real cert eac
 - Temperature register scaling (`_TEMP_SCALE = 10.0` in `climate.py`) — may be whole degrees
 - Pump speed range — currently 0–3 levels; may differ by pump model
 - Solar register bit mask — bit 0 assumed; other bits interact
-- Whether Cognito Identity Pool still accepts unauthenticated access
+- Registers 65336, 65338 — observed on live hardware, pump-like on/off/2 pattern, not yet mapped
+- Register 65485 — observed on live hardware, appears to be a multi-bit status/flags field (values: 0, 257, 513, 769, 1025, 65535)
+- Register 57517 — observed on live hardware, near heater range, values 0/1/2
+
+## Confirmed via Live Hardware
+
+- Unauthenticated Cognito Identity Pool access still works (tested 2026-03-30)
+- MQTT topic prefix is `dontek{mac}` — without this prefix the broker closes the connection
+- QR code numeric ID = MAC address encoded as big-endian integer (upper 6 bytes = MAC, lower byte unknown)
+- `pswpolicy` restricts subscribe/publish to `dontek{mac}/` prefix only

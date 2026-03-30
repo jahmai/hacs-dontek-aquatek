@@ -32,7 +32,8 @@ for _mod in ("awscrt", "awscrt.mqtt", "awsiot", "awsiot.mqtt_connection_builder"
 # Shared test constants
 # ---------------------------------------------------------------------------
 
-DEVICE_ID = "12345678901234567"
+MAC = "aabbccddeeff"           # normalised no-colon form used in tests
+DEVICE_ID = MAC              # backward-compat alias used by a few tests
 
 FAKE_CERTS = {
     "cert_id": "abcdef1234567890abcdef1234567890abcdef12",

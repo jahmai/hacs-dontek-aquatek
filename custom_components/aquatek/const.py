@@ -8,15 +8,15 @@ AWS_REGION = "ap-southeast-2"
 IOT_ENDPOINT = "a219g53ny7vwvd-ats.iot.ap-southeast-2.amazonaws.com"
 IOT_POLICY_NAME = "pswpolicy"
 
-# MQTT topic templates — MAC address as stored (e.g. "AA:BB:CC:DD:EE:FF")
-TOPIC_STATUS = "{mac}/status/psw"
-TOPIC_CMD = "{mac}/cmd/psw"
+# MQTT topic templates — mac is lowercase no-colon hex (e.g. "aabbccddeeff")
+# The broker requires the "dontek" prefix on all device topics.
+TOPIC_STATUS = "dontek{mac}/status/psw"
+TOPIC_CMD = "dontek{mac}/cmd/psw"
 TOPIC_SHADOW = "$aws/things/{mac_upper}_VERSION/shadow/get/+"
 
 # Config entry keys
-# The device ID is the numeric string encoded in the QR code sticker
-# (e.g. "12345678901234567").
-CONF_DEVICE_ID = "device_id"
+# MAC address from the device sticker, normalised to lowercase no-colon hex.
+CONF_MAC = "mac"
 CONF_CERT_ID = "cert_id"
 
 # HA storage
