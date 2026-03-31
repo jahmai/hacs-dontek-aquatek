@@ -1,5 +1,5 @@
 {
-  "domain": "aquatek",
+  "domain": "dontek_aquatek",
   "name": "Dontek Aquatek",
   "version": "0.1.0",
   "config_flow": true,

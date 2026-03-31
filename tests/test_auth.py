@@ -3,13 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from custom_components.aquatek.auth import (
+from custom_components.dontek_aquatek.auth import (
     _get_cognito_credentials,
     _provision_certificates,
     delete_certificates,
     load_or_provision_certificates,
 )
-from custom_components.aquatek.const import STORAGE_KEY, STORAGE_VERSION
+from custom_components.dontek_aquatek.const import STORAGE_KEY, STORAGE_VERSION
 
 from .conftest import DEVICE_ID, FAKE_CERTS
 
@@ -119,7 +119,7 @@ async def test_load_returns_stored_certs(hass):
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{DEVICE_ID}")
     await store.async_save(FAKE_CERTS)
 
-    with patch("custom_components.aquatek.auth._do_provision") as mock_provision:
+    with patch("custom_components.dontek_aquatek.auth._do_provision") as mock_provision:
         result = await load_or_provision_certificates(hass, DEVICE_ID)
 
     mock_provision.assert_not_called()
@@ -130,7 +130,7 @@ async def test_load_returns_stored_certs(hass):
 async def test_load_provisions_when_storage_empty(hass):
     """Calls _do_provision and saves result when no certs are stored."""
     with patch(
-        "custom_components.aquatek.auth._do_provision", return_value=FAKE_CERTS
+        "custom_components.dontek_aquatek.auth._do_provision", return_value=FAKE_CERTS
     ) as mock_provision:
         result = await load_or_provision_certificates(hass, DEVICE_ID)
 
@@ -142,11 +142,11 @@ async def test_load_saves_provisioned_certs(hass):
     """Provisioned certs are persisted so the next call doesn't re-provision."""
     from homeassistant.helpers.storage import Store
 
-    with patch("custom_components.aquatek.auth._do_provision", return_value=FAKE_CERTS):
+    with patch("custom_components.dontek_aquatek.auth._do_provision", return_value=FAKE_CERTS):
         await load_or_provision_certificates(hass, DEVICE_ID)
 
     # Second call — should hit storage, not boto3
-    with patch("custom_components.aquatek.auth._do_provision") as mock_provision:
+    with patch("custom_components.dontek_aquatek.auth._do_provision") as mock_provision:
         result = await load_or_provision_certificates(hass, DEVICE_ID)
 
     mock_provision.assert_not_called()

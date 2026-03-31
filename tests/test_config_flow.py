@@ -6,8 +6,8 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.aquatek.config_flow import _parse_mac
-from custom_components.aquatek.const import CONF_MAC, DOMAIN
+from custom_components.dontek_aquatek.config_flow import _parse_mac
+from custom_components.dontek_aquatek.const import CONF_MAC, DOMAIN
 
 from .conftest import MAC, FAKE_CERTS
 
@@ -91,7 +91,7 @@ async def test_step_user_invalid_mac_shows_error(hass):
 async def test_full_flow_creates_entry(hass):
     """Valid MAC + successful provisioning creates a config entry."""
     with patch(
-        "custom_components.aquatek.config_flow.provision_and_store",
+        "custom_components.dontek_aquatek.config_flow.provision_and_store",
         return_value=FAKE_CERTS,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -116,7 +116,7 @@ async def test_full_flow_creates_entry(hass):
 async def test_full_flow_accepts_numeric_qr_id(hass):
     """Numeric QR code ID is accepted and decoded to MAC."""
     with patch(
-        "custom_components.aquatek.config_flow.provision_and_store",
+        "custom_components.dontek_aquatek.config_flow.provision_and_store",
         return_value=FAKE_CERTS,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -150,7 +150,7 @@ async def test_flow_aborts_on_duplicate_device(hass):
     entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.aquatek.config_flow.provision_and_store",
+        "custom_components.dontek_aquatek.config_flow.provision_and_store",
         return_value=FAKE_CERTS,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -173,7 +173,7 @@ async def test_flow_aborts_on_duplicate_device(hass):
 async def test_full_flow_provision_failure_shows_error(hass):
     """A boto3 exception during provisioning returns to the user form with an error."""
     with patch(
-        "custom_components.aquatek.config_flow.provision_and_store",
+        "custom_components.dontek_aquatek.config_flow.provision_and_store",
         side_effect=Exception("AWS unavailable"),
     ):
         result = await hass.config_entries.flow.async_init(

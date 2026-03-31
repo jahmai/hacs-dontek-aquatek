@@ -1,6 +1,6 @@
 """Constants for the Dontek Aquatek integration."""
 
-DOMAIN = "aquatek"
+DOMAIN = "dontek_aquatek"
 
 # AWS / IoT
 COGNITO_POOL_ID = "ap-southeast-2:c45f75ed-a7e5-4a4f-b27a-ac3941f6d9bf"

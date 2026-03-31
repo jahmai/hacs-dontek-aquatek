@@ -1,7 +1,7 @@
 """Tests for mqtt_client.py — topic construction and MAC normalisation."""
 from unittest.mock import MagicMock
 
-from custom_components.aquatek.mqtt_client import AquatekMQTTClient, _normalise_mac
+from custom_components.dontek_aquatek.mqtt_client import AquatekMQTTClient, _normalise_mac
 
 
 # ---------------------------------------------------------------------------
