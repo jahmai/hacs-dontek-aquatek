@@ -231,6 +231,15 @@ async def run(device_id: str, cert_data: dict, listen_secs: int, button_test: bo
     )
     await asyncio.wrap_future(shadow_future)
 
+    # Request immediate full state dump (mirrors what the app sends on connect)
+    state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
+    pub_future, _ = connection.publish(
+        topic=topic_cmd,
+        payload=state_request,
+        qos=mqtt.QoS.AT_MOST_ONCE,
+    )
+    await asyncio.wrap_future(pub_future)
+
     if button_test:
         print(f"\n{BOLD}READY — button-test mode, suppressing initial dump ({DUMP_SETTLE_SECS}s){RESET}")
         print(f"Press appliance buttons in the app. Each change prints one line.\n")
