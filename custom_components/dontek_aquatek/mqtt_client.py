@@ -136,13 +136,8 @@ class AquatekMQTTClient:
             )
             await asyncio.wrap_future(subscribe_future)
 
-            # Subscribe to shadow topic for firmware version info
-            shadow_future, _ = self._connection.subscribe(
-                topic=self._topic_shadow,
-                qos=mqtt.QoS.AT_MOST_ONCE,
-                callback=self._on_shadow_raw,
-            )
-            await asyncio.wrap_future(shadow_future)
+            # Shadow topic subscribe omitted — $aws/ prefix is outside pswpolicy scope
+            # and may cause the broker to silently drop subsequent messages.
 
             _LOGGER.debug("Subscribed to %s", self._topic_status)
 
@@ -167,6 +162,7 @@ class AquatekMQTTClient:
     def _on_message_raw(self, topic: str, payload: bytes, **kwargs) -> None:
         """Raw MQTT callback — runs on awscrt thread, schedule onto event loop."""
         assert self._loop is not None
+        _LOGGER.debug("Received MQTT message on %s (%d bytes)", topic, len(payload))
         self._loop.call_soon_threadsafe(self._handle_message, payload)
 
     def _on_shadow_raw(self, topic: str, payload: bytes, **kwargs) -> None:

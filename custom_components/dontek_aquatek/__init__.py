@@ -54,10 +54,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = AquatekCoordinator(hass, entry, mqtt_client)
 
-    # Connect and wait for the initial full state dump so socket config is available
-    # when platforms set up their entities. Timeout is handled gracefully.
+    # Connect — platforms set up immediately; socket entities are discovered
+    # dynamically when the first device state dump arrives via coordinator listener.
     await coordinator.async_setup()
-    await coordinator.async_wait_for_initial_data()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
