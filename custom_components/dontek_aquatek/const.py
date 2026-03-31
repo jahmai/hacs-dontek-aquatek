@@ -26,7 +26,7 @@ STORAGE_VERSION = 1
 # MQTT reconnect timing (seconds)
 RECONNECT_MIN = 2
 RECONNECT_MAX = 60
-WATCHDOG_TIMEOUT = 180  # mark offline if no status message in this many seconds
+WATCHDOG_TIMEOUT = 600  # mark offline if no status message in this many seconds (device heartbeat ~8min)
 
 # ---------------------------------------------------------------------------
 # Modbus register map — all confirmed against live hardware (2026-03-31)

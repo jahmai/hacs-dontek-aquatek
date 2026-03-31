@@ -152,6 +152,18 @@ class AquatekMQTTClient:
 
             _LOGGER.debug("Subscribed to %s", self._topic_status)
 
+            # Request full state dump — mirrors what the app sends on connect.
+            # modbusReg=1 with messageId="read" triggers the device to push its
+            # complete register state (the bulk key-value dump format).
+            state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
+            pub_future, _ = self._connection.publish(
+                topic=self._topic_cmd,
+                payload=state_request,
+                qos=mqtt.QoS.AT_MOST_ONCE,
+            )
+            await asyncio.wrap_future(pub_future)
+            _LOGGER.debug("Sent state dump request")
+
             # Start watchdog
             if self._watchdog_task:
                 self._watchdog_task.cancel()
