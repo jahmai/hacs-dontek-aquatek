@@ -19,8 +19,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     DOMAIN,
     REG_FILTER_PUMP,
-    REG_GAS_HEATER,
-    REG_SOCKET_BASE,
+    REG_GAS_HEATER_CTRL,
+    REG_SOCKET_OUTPUT_BASE,
     SOCKET_TYPE_NAMES,
     SOCKET_TYPE_POOL_LIGHT,
 )
@@ -62,6 +62,7 @@ async def async_setup_entry(
     # Fixed entities — always present regardless of socket config
     entities.append(AquatekFilterPumpSelect(coordinator))
     entities.append(AquatekGasHeaterSelect(coordinator))
+    # Heat pump is handled by the climate platform
 
     async_add_entities(entities)
 
@@ -79,7 +80,7 @@ class AquatekSocketSelect(AquatekEntity, SelectEntity):
         type_idx: int,
     ) -> None:
         super().__init__(coordinator, f"socket_{socket_n}")
-        self._register = REG_SOCKET_BASE + socket_n
+        self._register = REG_SOCKET_OUTPUT_BASE + (socket_n - 1)
         self._attr_name = SOCKET_TYPE_NAMES.get(type_idx, f"Socket {socket_n}")
         # Pool light uses explicit on (1); all other types default to auto (2) when turned on
         self._on_value = 1 if type_idx == SOCKET_TYPE_POOL_LIGHT else 2
@@ -136,7 +137,7 @@ class AquatekGasHeaterSelect(AquatekEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        val = self._reg(REG_GAS_HEATER)
+        val = self._reg(REG_GAS_HEATER_CTRL)
         if val is None:
             return None
         try:
@@ -146,4 +147,4 @@ class AquatekGasHeaterSelect(AquatekEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         val = _GAS_VALUES[_GAS_OPTIONS.index(option)]
-        await self.coordinator.async_write_register(REG_GAS_HEATER, [val])
+        await self.coordinator.async_write_register(REG_GAS_HEATER_CTRL, [val])

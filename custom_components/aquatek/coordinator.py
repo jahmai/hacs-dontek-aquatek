@@ -17,6 +17,7 @@ from .const import (
     DOMAIN,
     REG_DEVICE_NAME_BASE,
     REG_SOCKET_TYPE_BASE,
+    REG_SOCKET_OUTPUT_BASE,
     SOCKET_COUNT,
     SOCKET_TYPE_NONE,
 )
@@ -83,7 +84,7 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
             return {}
         configs: dict[int, int] = {}
         for n in range(1, SOCKET_COUNT + 1):
-            type_idx = self.data.get(REG_SOCKET_TYPE_BASE + n, 0)
+            type_idx = self.data.get(REG_SOCKET_TYPE_BASE + (n - 1), 0)
             if type_idx != SOCKET_TYPE_NONE:
                 configs[n] = type_idx
         return configs

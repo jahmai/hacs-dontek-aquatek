@@ -29,40 +29,27 @@ RECONNECT_MAX = 60
 WATCHDOG_TIMEOUT = 180  # mark offline if no status message in this many seconds
 
 # ---------------------------------------------------------------------------
-# Modbus register map
+# Modbus register map — all confirmed against live hardware (2026-03-31)
 # ---------------------------------------------------------------------------
 #
-# SOCKET ARCHITECTURE
-# -------------------
-# The controller has configurable sockets. Each physical socket (5 total) is
-# assigned an appliance type in the app (sanitiser, pool light, jet pump, etc.).
-# The type assignment is stored on-device; entities must be auto-discovered by
-# reading config registers at startup.
+# CONTROLLER OUTPUT ARCHITECTURE
+# --------------------------------
+# 5 Sockets   — relay outputs; each assigned an appliance type in the app
+# 2 VF ports  — heater type assignment only (Gas Heater or Heat Pump)
+# 1 Filter pump serial port — dedicated speed-control serial connection
 #
-#   Output register:   REG_SOCKET_BASE + socket_number  (1-indexed)
-#   e.g. socket 1 → 65335, socket 2 → 65336, ... socket 5 → 65339
-#
-#   Type register:     REG_SOCKET_TYPE_BASE + socket_number  (1-indexed)
-#   e.g. socket 1 → reg 17, socket 2 → reg 18, ...
-#   Encoding: hi byte = SOCKET_TYPE_* index  (confirmed from APK arrays.xml)
-#
-#   Output values:  0 = off, 1 = on (manual), 2 = auto
-#
-# VF CONNECTORS (variable-frequency drive outputs, 2 total)
-# ---------------------------------------------------------
-# Used for speed-controlled loads (filter pump) and heater enables.
-# Filter pump VF encoding: 0=off, (speed<<8)|1 = speed 1–4, 65535=auto
-#   i.e. 257=speed1, 513=speed2, 769=speed3, 1025=speed4
+# SOCKET REGISTERS
+# -----------------
+# Output register:  65336 + (socket_n - 1)  i.e. socket 1=65336 ... socket 5=65340
+# Type register:    65323 + (socket_n - 1)  i.e. socket 1=65323 ... socket 5=65327
+# Type value is stored directly as an integer index (0–14) from SOCKET_TYPE_*.
+# Output values: 0=off, 1=on (manual / schedule running), 2=auto (schedule idle)
 
-REG_SOCKET_BASE = 65335          # socket n output = REG_SOCKET_BASE + n (1-indexed)
-                                 # e.g. socket 1 → 65336, socket 5 → 65340
+REG_SOCKET_OUTPUT_BASE = 65336   # socket n output = REG_SOCKET_OUTPUT_BASE + (n-1)
+REG_SOCKET_TYPE_BASE = 65323     # socket n type   = REG_SOCKET_TYPE_BASE   + (n-1)
 SOCKET_COUNT = 5
 
-REG_SOCKET_TYPE_BASE = 65322     # socket n type = REG_SOCKET_TYPE_BASE + n (1-indexed)
-                                 # e.g. socket 1 → 65323, socket 5 → 65327
-                                 # Value is the type index directly (0–14), NOT hi/lo encoded
-
-# Socket type indices from APK arrays.xml socket_type_options
+# Socket type indices — from APK arrays.xml socket_type_options (confirmed complete list)
 SOCKET_TYPE_NONE = 0
 SOCKET_TYPE_SANITISER = 1
 SOCKET_TYPE_FILTER_PUMP = 2
@@ -97,34 +84,31 @@ SOCKET_TYPE_NAMES: dict[int, str] = {
     SOCKET_TYPE_UV_SANITISER: "UV Sanitiser",
 }
 
-# Confirmed socket→appliance mapping on hardware-tested device (socket 1-indexed):
-#   Socket 2 (65336) = Sanitiser
-#   Socket 4 (65338) = Jet Pump
-#   Socket 5 (65339) = Pool Light
-# (other devices may differ — always use auto-discovery)
+# ---------------------------------------------------------------------------
+# VF port type config (which heater is connected to each VF port)
+# Values: 0=None, 1=Gas Heater, 2=Heat Pump
+REG_VF1_TYPE = 65335             # VF port 1 type config (confirmed)
+REG_VF2_TYPE = 57510             # VF port 2 type config (confirmed)
+
+VF_TYPE_NONE = 0
+VF_TYPE_GAS_HEATER = 1
+VF_TYPE_HEAT_PUMP = 2
 
 # ---------------------------------------------------------------------------
-# VF connector — filter pump (confirmed on hardware: reg 65485)
+# Filter pump — dedicated serial port (not a socket, not a VF port)
 # Values: 0=off, 257=speed1, 513=speed2, 769=speed3, 1025=speed4, 65535=auto
 REG_FILTER_PUMP = 65485
 
 # ---------------------------------------------------------------------------
-# Heater registers (57xxx range)
-REG_HEATER_TYPE = 57510         # 0=Smart Heater, 1=Heat Pump, 2=Gas (config, not on/off)
-REG_HEAT_PUMP_CTRL = 57517      # Heat Pump Heater on/off/auto: 0=off, 2=auto (confirmed)
-REG_GAS_HEATER = 65348          # Gas Heater on/off/auto: 0=off, 2=auto (confirmed; = 65334+14)
-REG_HEAT_SETPOINT = 57575       # Target temperature; value = °C × 2 (e.g. 32°C = 64, 33°C = 66)
-REG_HEATER_MODE = 57583         # 0=off, else on (purpose unconfirmed, may overlap with above)
-
-REG_SOLAR_ENABLED = 57585       # bit 0 = solar enabled
+# Heater control registers
+# Gas Heater:  controlled via fireman's switch wired to a socket-output register
+#              Output register follows the same 65336+ range as sockets.
+#              Confirmed at reg 65348 on tested hardware (socket index 13 = 65336+12).
+# Heat Pump:   connected via serial cable; controlled in the 57xxx register range.
+REG_GAS_HEATER_CTRL = 65348      # Gas Heater on/off/auto: 0=off, 2=auto (confirmed)
+REG_HEAT_PUMP_CTRL = 57517       # Heat Pump on/off/auto:  0=off, 2=auto (confirmed)
+REG_HEAT_SETPOINT = 57575        # Shared setpoint: value = °C × 2 (e.g. 32°C=64, confirmed)
 
 # ---------------------------------------------------------------------------
-# Pump base registers (the socket output range starts here at socket 5)
-# REG_PUMP_BASE == REG_SOCKET_BASE + 5 == 65339
-REG_PUMP_BASE = 0xFF3B          # 65339 — socket 5 output (= pump 0 in original firmware model)
-REG_PUMP_SPEED_BASE = 0xFF48    # 65352 — pump 0 speed (0–3 or 0–4, confirm on hardware)
-PUMP_COUNT = 13                 # indices 0–12; index 12 = spa pump
-
-REG_SPA_ENABLE = 65335          # socket 1 output (= REG_SOCKET_BASE + 1)
-
-REG_DEVICE_NAME_BASE = 65488    # 8 registers, each an ASCII byte
+# Device info
+REG_DEVICE_NAME_BASE = 65488     # 8 registers, 2 packed ASCII bytes each (big-endian)
