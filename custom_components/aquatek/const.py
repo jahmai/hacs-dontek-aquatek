@@ -85,6 +85,11 @@ SOCKET_TYPE_NAMES: dict[int, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Pool / Spa mode (write to switch between pool and spa mode)
+# 0 = Pool, 1 = Spa (confirmed on hardware)
+REG_POOL_SPA_MODE = 65313
+
+# ---------------------------------------------------------------------------
 # VF port type config (which heater is connected to each VF port)
 # Values: 0=None, 1=Gas Heater, 2=Heat Pump
 REG_VF1_TYPE = 65335             # VF port 1 type config (confirmed)
@@ -107,7 +112,8 @@ REG_FILTER_PUMP = 65485
 # Heat Pump:   connected via serial cable; controlled in the 57xxx register range.
 REG_GAS_HEATER_CTRL = 65348      # Gas Heater on/off/auto: 0=off, 2=auto (confirmed)
 REG_HEAT_PUMP_CTRL = 57517       # Heat Pump on/off/auto:  0=off, 2=auto (confirmed)
-REG_HEAT_SETPOINT = 57575        # Shared setpoint: value = °C × 2 (e.g. 32°C=64, confirmed)
+REG_HEAT_SETPOINT = 57575        # Pool setpoint: value = °C × 2 (e.g. 32°C=64, confirmed)
+REG_SPA_SETPOINT = 65441         # Spa setpoint:  value = °C × 2 (e.g. 38°C=76, confirmed)
 
 # ---------------------------------------------------------------------------
 # Device info

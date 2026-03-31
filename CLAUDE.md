@@ -83,10 +83,10 @@ The controller has **5 configurable output sockets**. Each socket is assigned an
 
 | Register | Feature |
 |----------|---------|
-| `65334 + n` (n = 1–5) | Socket n output (0=off, 1=on, 2=auto) |
-| `16 + n` (n = 1–5) | Socket n type config — hi byte = type index (see below) |
+| `65336 + (n-1)` (n = 1–5) | Socket n output (0=off, 1=on, 2=auto) |
+| `65323 + (n-1)` (n = 1–5) | Socket n type config — direct integer index (confirmed) |
 
-**Socket type indices** (from APK `arrays.xml` `socket_type_options`):
+**Socket type indices** (from APK `arrays.xml` `socket_type_options`, complete list confirmed):
 
 | Index | Appliance |
 |-------|-----------|
@@ -96,21 +96,32 @@ The controller has **5 configurable output sockets**. Each socket is assigned an
 | 3 | Cleaning Pump |
 | 4 | Blower |
 | 5 | Pool Light |
+| 6 | Spa Light |
+| 7 | Garden Light |
+| 8 | Water Feature |
+| 9 | Solar |
+| 10 | Other |
+| 11 | Always On |
 | 12 | Jet Pump |
-| 13 | Heating Pump |
+| 13 | Heating Pump (Ind.) |
+| 14 | UV Sanitiser |
 
 **Confirmed socket assignments** on tested device:
-- Socket 2 → reg 65336 → Sanitiser ✓
-- Socket 4 → reg 65338 → Jet Pump ✓
-- Socket 5 → reg 65339 → Pool Light ✓
+- Socket 1 → reg 65336 → Sanitiser (type 1) ✓
+- Socket 2 → reg 65337 → Heating Pump Ind. (type 13) ✓
+- Socket 3 → reg 65338 → Jet Pump (type 12) ✓
+- Socket 4 → reg 65339 → Pool Light (type 5) ✓
+- Socket 5 → reg 65340 → None (type 0) ✓
 
-### VF Connectors (variable-frequency drives, 2 total)
+### VF Connectors
 
-Used for speed-controlled loads. Filter pump confirmed on hardware:
+Two VF ports exist but they are **heater type config only** — they determine which heater is assigned to each VF port, not speed. The filter pump has its own separate serial connection.
 
 | Register | Feature | Values |
 |----------|---------|--------|
-| 65485 | Filter pump | 0=off, 257=spd1, 513=spd2, 769=spd3, 1025=spd4, 65535=auto |
+| 65335 | VF1 type config | 0=None, 1=Gas Heater, 2=Heat Pump (confirmed) |
+| 57510 | VF2 type config | 0=None, 1=Gas Heater, 2=Heat Pump (confirmed) |
+| 65485 | Filter pump (serial) | 0=off, 257=spd1, 513=spd2, 769=spd3, 1025=spd4, 65535=auto (confirmed) |
 
 ### Heating
 
@@ -126,12 +137,20 @@ Two different heater types use fundamentally different control interfaces:
 
 | Register | Feature | Notes |
 |----------|---------|-------|
-| 57510 | Heater type config | 0=Smart, 1=Heat Pump, 2=Gas — informational |
 | 57517 | Heat Pump on/off/auto | 0=off, 2=auto ✓ |
-| 57575 | Setpoint | value = °C × 2 (e.g. 32°C = 64, 33°C = 66) ✓ |
+| 57575 | Pool setpoint | value = °C × 2 (e.g. 32°C = 64) ✓ |
+| 65441 | Spa setpoint | value = °C × 2 (e.g. 38°C = 76) ✓ |
 | 57583 | Heater mode | 0=off, else on — purpose unconfirmed |
 | 57650 | Filter time 1 | |
 | 57670 | Filter time 2 | |
+
+The active setpoint register depends on Pool/Spa mode (65313): pool mode reads/writes 57575; spa mode reads/writes 65441.
+
+### Pool / Spa Mode
+
+| Register | Feature | Values |
+|----------|---------|--------|
+| 65313 | Pool/Spa mode | 0=Pool, 1=Spa (confirmed) |
 
 ### Solar
 | Register | Feature | Notes |
@@ -159,13 +178,15 @@ After each write command, the controller sends a `messageId="read"` response on 
 
 Entities must be **auto-discovered** from the socket config registers on connect. The static pump/light map in the original design is wrong — socket assignments vary per device.
 
-**Planned auto-discovered entities:**
+**Current entities:**
 
 | Platform | Entity | Source |
 |----------|--------|--------|
-| `switch` | One per configured socket | Socket type → appliance name; register = 65334+n |
-| `number` | Filter pump speed | VF reg 65485 (0/257/513/769/1025/65535) |
-| `climate` | Heater | 57517 (mode), 57566 (setpoint) |
+| `select` | One per configured socket (auto-discovered) | Socket type → name; reg 65336+(n-1) |
+| `select` | Filter Pump | reg 65485 (0/257/513/769/1025/65535) |
+| `select` | Gas Heater | reg 65348 (0=off, 2=auto) |
+| `select` | Pool/Spa Mode | reg 65313 (0=Pool, 1=Spa) |
+| `climate` | Heat Pump | 57517 (on/off), 57575 (pool setpoint), 65441 (spa setpoint) |
 | `sensor` | Connection Status | — |
 | `sensor` | Device Name | 65488–65495 |
 
@@ -232,25 +253,31 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 ## Known Unknowns (Needs Hardware Validation)
 
 - Solar register bit mask — `57585=65` (= 0x41, bit 0 set) observed in state dump; bit 0 = solar enabled confirmed, other bits unknown
-- Socket config encoding — hi byte confirmed as type index for sockets 2 and 5 (Sanitiser=1, Pool Light=5), but socket 4 shows hi byte=1 (Sanitiser type) while hardware confirms it's Jet Pump; lo byte meaning unclear. May mean type=1 is "generic pump output" not specifically sanitiser.
 - `57583` (Heater mode) — value=0 in state dump while HP heater was auto; purpose unclear, may overlap with 57517
-- `65487` — value=65535 in state dump, likely second VF connector (heating pump); confirm
-- Device name encoding — appears to be 2 ASCII chars per register (big-endian packed), not 1 char per register as originally assumed
 
-## Confirmed via Live Hardware (2026-03-30)
+## Confirmed via Live Hardware
 
+### 2026-03-30
 - Unauthenticated Cognito Identity Pool access still works
 - MQTT topic prefix is `dontek{mac}` — without this prefix the broker closes the connection
 - QR code numeric ID = MAC address encoded as big-endian integer (upper 6 bytes = MAC, lower byte unknown)
 - `pswpolicy` restricts subscribe/publish to `dontek{mac}/` prefix only
-- **65336 = Sanitiser socket output** — 0=off, 2=auto
-- **65338 = Jet Pump socket output** — 0=off, 2=auto
-- **65339 = Pool Light socket output** — 0=off, 1=on, 2=auto
-- **65485 = Filter Pump VF output** — 0=off, 65535=auto (257/513/769/1025 = speed 1–4)
-- **65348 = Gas Heater output** — 0=off, 2=auto (socket-output range: 65334+14)
-- **57517 = Heat Pump Heater** — 0=off, 2=auto
-- **57575 = Heater setpoint** — value = °C × 2 (32°C=64, 33°C=66); previous assumption of ×10 was wrong
+- **65336 = Socket 1 (Sanitiser) output** — 0=off, 1=on, 2=auto
+- **65337 = Socket 2 (Heating Pump) output** — 0=off, 2=auto
+- **65338 = Socket 3 (Jet Pump) output** — 0=off, 2=auto
+- **65339 = Socket 4 (Pool Light) output** — 0=off, 1=on, 2=auto
+- **REG_SOCKET_OUTPUT_BASE = 65336**, socket n = 65336 + (n-1), 0-indexed
+- **REG_SOCKET_TYPE_BASE = 65323**, socket n type = 65323 + (n-1), direct integer index
+- **65485 = Filter Pump serial output** — 0=off, 65535=auto (257/513/769/1025 = speed 1–4)
+- **65348 = Gas Heater output** — 0=off, 2=auto (socket-output at index 12, i.e. 65336+12)
+- **57517 = Heat Pump on/off/auto** — 0=off, 2=auto
+- **57575 = Pool setpoint** — value = °C × 2 (32°C=64); previous assumption of ×10 was wrong
 - Socket outputs follow 0=off, 1=on(manual), 2=auto pattern (not boolean)
 - Controller sends a `messageId="read"` echo on a lower register after each write (status feedback)
 - Feedback register = output register − 65176 (consistent across all tested sockets)
-- Socket output register range extends beyond 5 configurable sockets: gas heater at 65348 (index 14)
+- VF ports are heater type config only (not speed control); **65335 = VF1 type**, **57510 = VF2 type** (0=None, 1=Gas Heater, 2=Heat Pump)
+
+### 2026-03-31
+- **65313 = Pool/Spa mode** — 0=Pool, 1=Spa (write to switch modes)
+- **65441 = Spa setpoint** — value = °C × 2 (38°C=76); separate from pool setpoint at 57575
+- Heat pump reads/writes the correct setpoint based on current Pool/Spa mode

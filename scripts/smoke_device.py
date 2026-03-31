@@ -43,18 +43,21 @@ CERT_CACHE = Path(__file__).parent.parent / "local" / "smoke_cert.json"
 # Socket output registers (REG_SOCKET_BASE=65334, socket n = 65334+n, 1-indexed)
 # Socket type is configured per-device; labels below are from hardware testing.
 REG_NAMES: dict[int, str] = {
-    # Socket outputs (0=off, 1=on, 2=auto)
-    65335: "Socket 1 output",
-    65336: "Socket 2 output [Sanitiser confirmed]",
-    65337: "Socket 3 output",
-    65338: "Socket 4 output [Jet Pump confirmed]",
-    65339: "Socket 5 output [Pool Light confirmed]",
-    # Socket type config registers (hi byte = type index from APK arrays.xml)
-    17: "Socket 1 type config",
-    18: "Socket 2 type config",
-    19: "Socket 3 type config",
-    20: "Socket 4 type config",
-    21: "Socket 5 type config",
+    # Socket outputs (0=off, 1=on, 2=auto) — REG_SOCKET_OUTPUT_BASE=65336, socket n = 65336+(n-1)
+    65336: "Socket 1 output [Sanitiser confirmed]",
+    65337: "Socket 2 output [Heating Pump confirmed]",
+    65338: "Socket 3 output [Jet Pump confirmed]",
+    65339: "Socket 4 output [Pool Light confirmed]",
+    65340: "Socket 5 output",
+    # Socket type config registers — REG_SOCKET_TYPE_BASE=65323, socket n = 65323+(n-1), direct int
+    65323: "Socket 1 type config [confirmed]",
+    65324: "Socket 2 type config [confirmed]",
+    65325: "Socket 3 type config [confirmed]",
+    65326: "Socket 4 type config [confirmed]",
+    65327: "Socket 5 type config",
+    # VF port type config (0=None, 1=Gas Heater, 2=Heat Pump)
+    65335: "VF1 type config [confirmed] (0=None,1=GasHeater,2=HeatPump)",
+    57510: "VF2 type config [confirmed] (0=None,1=GasHeater,2=HeatPump)",
     # Pump speed outputs (socket 5 onwards = pump 0+)
     **{65352 + i: f"Pump {i} speed" for i in range(12)},
     # VF connector — filter pump (0=off, 257/513/769/1025=speed1-4, 65535=auto)
@@ -63,12 +66,15 @@ REG_NAMES: dict[int, str] = {
     57650: "Filter time 1",
     57670: "Filter time 2",
     # Heating (57xxx range)
-    57510: "Heater type config (0=Smart,1=HeatPump,2=Gas)",
     57517: "Heat Pump on/off/auto [confirmed] (0=off,2=auto)",
     57575: "Heat setpoint [confirmed] (value = C x2, e.g. 32C=64)",
     57583: "Heater mode (0=off)",
     # Gas Heater output (socket-output range, 65334+14)
     65348: "Gas Heater on/off/auto [confirmed] (0=off,2=auto)",
+    # Pool/Spa mode
+    65313: "Pool/Spa mode [confirmed] (0=Pool,1=Spa)",
+    # Setpoints
+    65441: "Spa setpoint [confirmed] (value = C x2, e.g. 38C=76)",
     # Solar
     57585: "Solar enabled (bit 0)",
     # Device name
@@ -235,7 +241,7 @@ async def run(device_id: str, cert_data: dict, listen_secs: int, button_test: bo
     await asyncio.wrap_future(connection.disconnect())
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    print(f"\n{BOLD}── Summary ────────────────────────────────────────────────{RESET}")
+    print(f"\n{BOLD}-- Summary ----------------------------------------------------------{RESET}")
     print(f"  Messages received : {message_count}")
     print(f"  Registers seen    : {len(register_state)}")
 

@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     REG_FILTER_PUMP,
     REG_GAS_HEATER_CTRL,
+    REG_POOL_SPA_MODE,
     REG_SOCKET_OUTPUT_BASE,
     SOCKET_TYPE_NAMES,
     SOCKET_TYPE_POOL_LIGHT,
@@ -45,6 +46,12 @@ _FILTER_VALUES = [0, 257, 513, 769, 1025, 65535]
 _GAS_OPTIONS = ["Off", "Auto"]
 _GAS_VALUES = [0, 2]
 
+# ---------------------------------------------------------------------------
+# Pool / Spa mode
+
+_POOL_SPA_OPTIONS = ["Pool", "Spa"]
+_POOL_SPA_VALUES = [0, 1]
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -62,6 +69,7 @@ async def async_setup_entry(
     # Fixed entities — always present regardless of socket config
     entities.append(AquatekFilterPumpSelect(coordinator))
     entities.append(AquatekGasHeaterSelect(coordinator))
+    entities.append(AquatekPoolSpaSelect(coordinator))
     # Heat pump is handled by the climate platform
 
     async_add_entities(entities)
@@ -148,3 +156,28 @@ class AquatekGasHeaterSelect(AquatekEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         val = _GAS_VALUES[_GAS_OPTIONS.index(option)]
         await self.coordinator.async_write_register(REG_GAS_HEATER_CTRL, [val])
+
+
+class AquatekPoolSpaSelect(AquatekEntity, SelectEntity):
+    """Pool / Spa mode switch (reg 65313: 0=Pool, 1=Spa)."""
+
+    _attr_name = "Pool/Spa Mode"
+    _attr_options = _POOL_SPA_OPTIONS
+    _attr_icon = "mdi:pool"
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "pool_spa_mode")
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(REG_POOL_SPA_MODE)
+        if val is None:
+            return None
+        try:
+            return _POOL_SPA_OPTIONS[_POOL_SPA_VALUES.index(val)]
+        except ValueError:
+            return "Pool"
+
+    async def async_select_option(self, option: str) -> None:
+        val = _POOL_SPA_VALUES[_POOL_SPA_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(REG_POOL_SPA_MODE, [val])
