@@ -66,6 +66,7 @@ class AquatekMQTTClient:
         self._state_callback = state_callback
 
         self._connection = None
+        self._mqtt_module = None
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_task: asyncio.Task | None = None
         self._watchdog_task: asyncio.Task | None = None
@@ -94,22 +95,32 @@ class AquatekMQTTClient:
         self._set_state(ConnectionState.CONNECTING)
         await self._do_connect()
 
+    def _build_mqtt_connection(self):
+        """Build the awsiotsdk connection object (blocking — run in executor)."""
+        from awscrt import mqtt as _mqtt  # noqa: PLC0415
+        from awsiot import mqtt_connection_builder  # noqa: PLC0415
+
+        self._mqtt_module = _mqtt
+        return mqtt_connection_builder.mtls_from_bytes(
+            endpoint=IOT_ENDPOINT,
+            cert_bytes=self._cert_pem.encode(),
+            pri_key_bytes=self._private_key.encode(),
+            client_id=self._client_id,
+            clean_session=False,
+            keep_alive_secs=60,
+            on_connection_interrupted=self._on_interrupted,
+            on_connection_resumed=self._on_resumed,
+        )
+
     async def _do_connect(self) -> None:
         """Build awsiotsdk connection and connect."""
         try:
-            from awscrt import mqtt  # noqa: PLC0415
-            from awsiot import mqtt_connection_builder  # noqa: PLC0415
-
-            self._connection = mqtt_connection_builder.mtls_from_bytes(
-                endpoint=IOT_ENDPOINT,
-                cert_bytes=self._cert_pem.encode(),
-                pri_key_bytes=self._private_key.encode(),
-                client_id=self._client_id,
-                clean_session=False,
-                keep_alive_secs=60,
-                on_connection_interrupted=self._on_interrupted,
-                on_connection_resumed=self._on_resumed,
+            # mtls_from_bytes does blocking I/O (package metadata reads) on first
+            # import — run it in a thread so the event loop stays responsive.
+            self._connection = await self._loop.run_in_executor(
+                None, self._build_mqtt_connection
             )
+            mqtt = self._mqtt_module
 
             connect_future = self._connection.connect()
             await asyncio.wrap_future(connect_future)
