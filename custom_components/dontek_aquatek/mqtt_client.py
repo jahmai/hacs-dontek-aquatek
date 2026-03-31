@@ -136,8 +136,19 @@ class AquatekMQTTClient:
             )
             await asyncio.wrap_future(subscribe_future)
 
-            # Shadow topic subscribe omitted — $aws/ prefix is outside pswpolicy scope
-            # and may cause the broker to silently drop subsequent messages.
+            # Subscribe to shadow topic — AWS IoT publishes the current shadow state
+            # on subscribe, which may trigger the device to send a full state dump.
+            # Wrapped separately so a policy denial here doesn't break status messages.
+            try:
+                shadow_future, _ = self._connection.subscribe(
+                    topic=self._topic_shadow,
+                    qos=mqtt.QoS.AT_MOST_ONCE,
+                    callback=self._on_shadow_raw,
+                )
+                await asyncio.wrap_future(shadow_future)
+                _LOGGER.debug("Subscribed to shadow topic %s", self._topic_shadow)
+            except Exception:
+                _LOGGER.debug("Shadow topic subscribe failed (policy may not permit it)")
 
             _LOGGER.debug("Subscribed to %s", self._topic_status)
 
