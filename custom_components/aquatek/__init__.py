@@ -16,8 +16,7 @@ from .mqtt_client import AquatekMQTTClient
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [
-    Platform.SWITCH,
-    Platform.NUMBER,
+    Platform.SELECT,
     Platform.CLIMATE,
     Platform.SENSOR,
 ]
@@ -55,8 +54,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = AquatekCoordinator(hass, entry, mqtt_client)
 
-    # Connect
+    # Connect and wait for the initial full state dump so socket config is available
+    # when platforms set up their entities. Timeout is handled gracefully.
     await coordinator.async_setup()
+    await coordinator.async_wait_for_initial_data()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 

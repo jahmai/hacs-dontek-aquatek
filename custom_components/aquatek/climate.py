@@ -1,4 +1,9 @@
-"""Climate entity for the Dontek Aquatek heater control."""
+"""Climate entity for the Dontek Aquatek heat pump heater.
+
+The heat pump is connected via serial cable to the controller.
+Register 57517 controls on/off/auto; register 57575 holds the setpoint
+encoded as °C × 2 (e.g. 32°C is stored as 64).
+"""
 
 from __future__ import annotations
 
@@ -12,13 +17,12 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, REG_HEAT_SETPOINT, REG_HEATER_MODE
+from .const import DOMAIN, REG_HEAT_PUMP_CTRL, REG_HEAT_SETPOINT
 from .coordinator import AquatekCoordinator
 from .entity_base import AquatekEntity
 
-# Temperature is stored as tenths of a degree (e.g. 285 = 28.5°C).
-# TODO: confirm scaling with hardware — could be whole degrees on some firmware.
-_TEMP_SCALE = 10.0
+# Setpoint is stored as °C × 2 (confirmed on hardware: 32°C = 64, 33°C = 66)
+_TEMP_SCALE = 2.0
 
 
 async def async_setup_entry(
@@ -27,28 +31,30 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: AquatekCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([AquatekClimate(coordinator)])
+    async_add_entities([AquatekHeatPump(coordinator)])
 
 
-class AquatekClimate(AquatekEntity, ClimateEntity):
-    """Heater control — on/off mode and target temperature setpoint."""
+class AquatekHeatPump(AquatekEntity, ClimateEntity):
+    """Heat pump heater — on/off mode and target temperature setpoint."""
 
-    _attr_name = "Heater"
+    _attr_name = "Heat Pump"
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 15.0
     _attr_max_temp = 40.0
     _attr_target_temperature_step = 0.5
+    _attr_icon = "mdi:heat-pump"
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
-        super().__init__(coordinator, "heater")
+        super().__init__(coordinator, "heat_pump")
 
     @property
     def hvac_mode(self) -> HVACMode | None:
-        val = self._reg(REG_HEATER_MODE)
+        val = self._reg(REG_HEAT_PUMP_CTRL)
         if val is None:
             return None
+        # 0 = off, 2 = auto (heat); treat any non-zero value as HEAT
         return HVACMode.OFF if val == 0 else HVACMode.HEAT
 
     @property
@@ -60,12 +66,13 @@ class AquatekClimate(AquatekEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        # No current temp register identified yet — return None until confirmed
+        # No confirmed current-temperature register yet
         return None
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        mode_val = 0 if hvac_mode == HVACMode.OFF else 1
-        await self.coordinator.async_write_register(REG_HEATER_MODE, [mode_val])
+        # 0 = off, 2 = auto (the normal operating mode)
+        val = 0 if hvac_mode == HVACMode.OFF else 2
+        await self.coordinator.async_write_register(REG_HEAT_PUMP_CTRL, [val])
 
     async def async_set_temperature(self, **kwargs) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)

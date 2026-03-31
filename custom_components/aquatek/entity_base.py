@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import CONF_MAC, DOMAIN
 from .coordinator import AquatekCoordinator
 
 
@@ -20,13 +20,13 @@ class AquatekEntity(CoordinatorEntity[AquatekCoordinator]):
         unique_id_suffix: str,
     ) -> None:
         super().__init__(coordinator)
-        device_id = coordinator.entry.data[CONF_DEVICE_ID]
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_{unique_id_suffix}"
+        mac = coordinator.entry.data[CONF_MAC]
+        self._attr_unique_id = f"{DOMAIN}_{mac}_{unique_id_suffix}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-            name=f"Aquatek {device_id}",
+            identifiers={(DOMAIN, mac)},
+            name=coordinator.get_device_name() or f"Aquatek {mac}",
             manufacturer="Dontek Electronics",
-            model="Aquatek",
+            model="Pool+ Manager",
         )
 
     @property

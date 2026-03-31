@@ -69,6 +69,17 @@ SOCKET_TYPE_POOL_LIGHT = 5
 SOCKET_TYPE_JET_PUMP = 12
 SOCKET_TYPE_HEATING_PUMP = 13
 
+# Human-readable names for each socket type (used for entity naming)
+SOCKET_TYPE_NAMES: dict[int, str] = {
+    SOCKET_TYPE_SANITISER: "Sanitiser",
+    SOCKET_TYPE_FILTER_PUMP: "Filter Pump",
+    SOCKET_TYPE_CLEANING_PUMP: "Cleaning Pump",
+    SOCKET_TYPE_BLOWER: "Blower",
+    SOCKET_TYPE_POOL_LIGHT: "Pool Light",
+    SOCKET_TYPE_JET_PUMP: "Jet Pump",
+    SOCKET_TYPE_HEATING_PUMP: "Heating Pump",
+}
+
 # Confirmed socket→appliance mapping on hardware-tested device (socket 1-indexed):
 #   Socket 2 (65336) = Sanitiser
 #   Socket 4 (65338) = Jet Pump
