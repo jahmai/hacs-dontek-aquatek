@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -60,19 +60,38 @@ async def async_setup_entry(
 ) -> None:
     coordinator: AquatekCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities: list[SelectEntity] = []
-
-    # Auto-discover socket outputs from device config registers
-    for socket_n, type_idx in coordinator.get_socket_configs().items():
-        entities.append(AquatekSocketSelect(coordinator, socket_n, type_idx))
-
     # Fixed entities — always present regardless of socket config
-    entities.append(AquatekFilterPumpSelect(coordinator))
-    entities.append(AquatekGasHeaterSelect(coordinator))
-    entities.append(AquatekPoolSpaSelect(coordinator))
-    # Heat pump is handled by the climate platform
+    async_add_entities([
+        AquatekFilterPumpSelect(coordinator),
+        AquatekGasHeaterSelect(coordinator),
+        AquatekPoolSpaSelect(coordinator),
+    ])
 
-    async_add_entities(entities)
+    # Socket entities are auto-discovered from device config registers.
+    # If data is already available, add them now; otherwise a coordinator
+    # listener will add them on the first update (handles timeout case).
+    discovered: set[int] = set()
+
+    def _add_new_sockets() -> None:
+        new = [
+            AquatekSocketSelect(coordinator, n, t)
+            for n, t in coordinator.get_socket_configs().items()
+            if n not in discovered
+        ]
+        if new:
+            for entity in new:
+                discovered.add(entity._socket_n)
+            async_add_entities(new)
+
+    # Add any sockets available right now
+    _add_new_sockets()
+
+    # Register listener for sockets that arrive after initial timeout
+    @callback
+    def _on_coordinator_update() -> None:
+        _add_new_sockets()
+
+    entry.async_on_unload(coordinator.async_add_listener(_on_coordinator_update))
 
 
 class AquatekSocketSelect(AquatekEntity, SelectEntity):
@@ -88,6 +107,7 @@ class AquatekSocketSelect(AquatekEntity, SelectEntity):
         type_idx: int,
     ) -> None:
         super().__init__(coordinator, f"socket_{socket_n}")
+        self._socket_n = socket_n
         self._register = REG_SOCKET_OUTPUT_BASE + (socket_n - 1)
         self._attr_name = SOCKET_TYPE_NAMES.get(type_idx, f"Socket {socket_n}")
         # Pool light uses explicit on (1); all other types default to auto (2) when turned on
