@@ -76,15 +76,14 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
     def get_socket_configs(self) -> dict[int, int]:
         """Return {socket_n: type_index} for every configured socket (type != None).
 
-        Reads the socket type config registers (REG_SOCKET_TYPE_BASE + n, 1-indexed).
-        The type index is the hi byte of the register value.
+        Socket n type is stored directly as an integer in register REG_SOCKET_TYPE_BASE + n
+        (1-indexed). The value is the type index from SOCKET_TYPE_* constants (0–14).
         """
         if not self.data:
             return {}
         configs: dict[int, int] = {}
         for n in range(1, SOCKET_COUNT + 1):
-            val = self.data.get(REG_SOCKET_TYPE_BASE + n, 0)
-            type_idx = (val >> 8) & 0xFF
+            type_idx = self.data.get(REG_SOCKET_TYPE_BASE + n, 0)
             if type_idx != SOCKET_TYPE_NONE:
                 configs[n] = type_idx
         return configs

@@ -54,10 +54,13 @@ WATCHDOG_TIMEOUT = 180  # mark offline if no status message in this many seconds
 # Filter pump VF encoding: 0=off, (speed<<8)|1 = speed 1–4, 65535=auto
 #   i.e. 257=speed1, 513=speed2, 769=speed3, 1025=speed4
 
-REG_SOCKET_BASE = 65334          # socket n output = REG_SOCKET_BASE + n (1-indexed)
+REG_SOCKET_BASE = 65335          # socket n output = REG_SOCKET_BASE + n (1-indexed)
+                                 # e.g. socket 1 → 65336, socket 5 → 65340
 SOCKET_COUNT = 5
 
-REG_SOCKET_TYPE_BASE = 16        # socket n type = REG_SOCKET_TYPE_BASE + n (1-indexed)
+REG_SOCKET_TYPE_BASE = 65322     # socket n type = REG_SOCKET_TYPE_BASE + n (1-indexed)
+                                 # e.g. socket 1 → 65323, socket 5 → 65327
+                                 # Value is the type index directly (0–14), NOT hi/lo encoded
 
 # Socket type indices from APK arrays.xml socket_type_options
 SOCKET_TYPE_NONE = 0
@@ -66,8 +69,15 @@ SOCKET_TYPE_FILTER_PUMP = 2
 SOCKET_TYPE_CLEANING_PUMP = 3
 SOCKET_TYPE_BLOWER = 4
 SOCKET_TYPE_POOL_LIGHT = 5
+SOCKET_TYPE_SPA_LIGHT = 6
+SOCKET_TYPE_GARDEN_LIGHT = 7
+SOCKET_TYPE_WATER_FEATURE = 8
+SOCKET_TYPE_SOLAR = 9
+SOCKET_TYPE_OTHER = 10
+SOCKET_TYPE_ALWAYS_ON = 11
 SOCKET_TYPE_JET_PUMP = 12
 SOCKET_TYPE_HEATING_PUMP = 13
+SOCKET_TYPE_UV_SANITISER = 14
 
 # Human-readable names for each socket type (used for entity naming)
 SOCKET_TYPE_NAMES: dict[int, str] = {
@@ -76,8 +86,15 @@ SOCKET_TYPE_NAMES: dict[int, str] = {
     SOCKET_TYPE_CLEANING_PUMP: "Cleaning Pump",
     SOCKET_TYPE_BLOWER: "Blower",
     SOCKET_TYPE_POOL_LIGHT: "Pool Light",
+    SOCKET_TYPE_SPA_LIGHT: "Spa Light",
+    SOCKET_TYPE_GARDEN_LIGHT: "Garden Light",
+    SOCKET_TYPE_WATER_FEATURE: "Water Feature",
+    SOCKET_TYPE_SOLAR: "Solar",
+    SOCKET_TYPE_OTHER: "Other",
+    SOCKET_TYPE_ALWAYS_ON: "Always On",
     SOCKET_TYPE_JET_PUMP: "Jet Pump",
     SOCKET_TYPE_HEATING_PUMP: "Heating Pump",
+    SOCKET_TYPE_UV_SANITISER: "UV Sanitiser",
 }
 
 # Confirmed socket→appliance mapping on hardware-tested device (socket 1-indexed):
