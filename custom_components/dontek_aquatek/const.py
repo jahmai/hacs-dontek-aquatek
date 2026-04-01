@@ -110,10 +110,183 @@ REG_FILTER_PUMP = 65485
 #              Output register follows the same 65336+ range as sockets.
 #              Confirmed at reg 65348 on tested hardware (socket index 13 = 65336+12).
 # Heat Pump:   connected via serial cable; controlled in the 57xxx register range.
-REG_GAS_HEATER_CTRL = 65348      # Gas Heater on/off/auto: 0=off, 2=auto (confirmed)
+REG_GAS_HEATER_CTRL = 65348      # Gas Heater on/off/auto: 0=off, 1=on, 2=auto (confirmed)
 REG_HEAT_PUMP_CTRL = 57517       # Heat Pump on/off/auto:  0=off, 2=auto (confirmed)
-REG_HEAT_SETPOINT = 57575        # Pool setpoint: value = °C × 2 (e.g. 32°C=64, confirmed)
-REG_SPA_SETPOINT = 65441         # Spa setpoint:  value = °C × 2 (e.g. 38°C=76, confirmed)
+REG_HEAT_SETPOINT = 57575        # Heat Pump setpoint (Heater 2 / Pool): value = °C × 2 (confirmed)
+REG_SPA_SETPOINT = 65441         # Gas Heater setpoint (Heater 1 / Spa): value = °C × 2 (confirmed)
+REG_BOOST_MODE = 57577           # Heater 2 boost/party mode: 0=off, 1=on (confirmed)
+REG_RUN_TILL_HEATED = 65500      # Heater 1 run till heated: 0=off, 1=on (confirmed)
+
+# ---------------------------------------------------------------------------
+# VF port heating configuration
+# VF1 = Heater 1 (65xxx registers), VF2 = Heater 2 (57xxx registers)
+#
+# Heating mode values: 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa (confirmed both VFs)
+# Pump type values:
+#   VF1 (65450): 2=Filter, 4=Independent (confirmed)
+#   VF2 (57574): 0=Filter, 1=Independent/Filter sensor, 2=Independent/Heater Line sensor
+# Sensor location (VF1 only, separate reg):
+#   65462: 0=Filter, 1=Heater Line (only shown when pump type = Independent)
+
+REG_VF1_HEAT_MODE    = 65450     # VF1 heating mode (0=Off, 2=Pool&Spa, 3=Pool, 4=Spa)
+REG_VF1_COOLDOWN     = 65451     # VF1 cool down time in minutes
+REG_VF1_SANITISER    = 65501     # VF1 sanitiser: 0=off, 1=on
+REG_VF1_PUMP_TYPE    = 65499     # VF1 pump type: 0=Filter, 1=Independent, 2=? (confirmed 0/1)
+REG_VF1_PUMP_SPEED   = 65462     # VF1 pump speed: 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 (confirmed)
+# REG_VF1_SENSOR_LOC: register not yet confirmed — needs dedicated button test
+REG_VF1_CHILLING     = 65523     # VF1 chilling: 0=off, 1=on (Heat Pump type only)
+REG_VF1_HYDRO        = 57586     # VF1 hydrotherapy: 0=off, 1=on
+
+REG_VF2_HEAT_MODE    = 57566     # VF2 heating mode (0=Off, 2=Pool&Spa, 3=Pool, 4=Spa)
+REG_VF2_COOLDOWN     = 57568     # VF2 cool down time in minutes
+REG_VF2_SANITISER    = 57570     # VF2 sanitiser: 0=off, 1=on
+REG_VF2_PUMP_TYPE    = 57574     # VF2 pump type+sensor combined: 0=Filter, 1=Indep/Filter, 2=Indep/HeaterLine
+REG_VF2_SENSOR_LOC   = 57574     # same register — sensor location encoded as 1=Filter, 2=HeaterLine
+REG_VF2_CHILLING     = 57569     # VF2 chilling: 0=off, 1=on (Heat Pump type only)
+REG_VF2_HYDRO        = 57587     # VF2 hydrotherapy: 0=off, 1=on
+REG_VF2_SETBACK      = 57578     # VF2 setback: 0=off, 1=on (Secondary Heating only)
+REG_VF2_SETBACK_TEMP = 57579     # VF2 setback temperature offset: stored as positive 0.5°C steps (e.g. 6=−3°C)
+
+VF_HEAT_MODE_OPTIONS = ["Off", "Pool & Spa", "Pool", "Spa"]
+VF_HEAT_MODE_VALUES  = [0, 2, 3, 4]
+
+VF1_PUMP_TYPE_OPTIONS = ["Filter", "Independent"]
+VF1_PUMP_TYPE_VALUES  = [0, 1]  # confirmed
+
+VF1_PUMP_SPEED_OPTIONS = ["Speed 1", "Speed 2", "Speed 3", "Speed 4"]
+VF1_PUMP_SPEED_VALUES  = [0, 1, 2, 3]  # confirmed
+
+VF2_PUMP_TYPE_OPTIONS = ["Filter", "Independent"]
+VF2_PUMP_TYPE_VALUES  = [0, 1]   # 0=Filter, non-zero=Independent
+
+VF2_SENSOR_LOC_OPTIONS = ["Filter", "Heater Line"]
+VF2_SENSOR_LOC_VALUES  = [1, 2]  # 1=Filter sensor, 2=Heater Line sensor
+# ---------------------------------------------------------------------------
+# Temperature sensors (3 physical sensors, each configurable to a role)
+# Type config: 65314=Sensor1 type, 65315=Sensor2 type, 65316=Sensor3 type
+# Reading:     reg 55=Sensor1, 56=Sensor2, 57=Sensor3  — value = °C × 2 (confirmed)
+# Sensor type values:
+#   1 = Pool  (confirmed: 65315=1 when Sensor2 configured as Pool)
+#   2 = Roof  (confirmed: 65314=2 when Sensor1 configured as Roof)
+#  15 = Water (observed: 65316=15 when Sensor3 configured as Water — value may vary)
+REG_SENSOR_TYPE_BASE = 65314    # Sensor n type = base + (n-1), n=1..3
+REG_SENSOR_READING_BASE = 55    # Sensor n reading = base + (n-1), value = °C × 2
+SENSOR_COUNT = 3
+SENSOR_TYPE_POOL = 1            # Pool temperature sensor
+SENSOR_TYPE_ROOF = 2            # Roof/solar temperature sensor
+# Water sensor type index observed as 15 on tested hardware — may vary
+SENSOR_TYPE_WATER = 15
+
+SENSOR_TYPE_NAMES: dict[int, str] = {
+    0: "None",
+    SENSOR_TYPE_POOL: "Pool",
+    SENSOR_TYPE_ROOF: "Roof",
+    SENSOR_TYPE_WATER: "Water",
+}
+
+# Alias used in climate.py for sensor 1 fallback (original name kept for compat)
+REG_WATER_TEMP = REG_SENSOR_READING_BASE
+
+# ---------------------------------------------------------------------------
+# Pool light type and colour control
+# reg 65352 packs: (light_type << 8) | colour_index (confirmed on hardware)
+# Type indices: 2=Aquaquip, 3=Aquaquip Instatouch confirmed; others assumed sequential
+# (0 and 1 are unconfirmed — likely None / Single Colour but not validated)
+REG_POOL_LIGHT_CTRL = 65352
+
+# Light type indices (from APK arrays.xml light_type_options order, offset confirmed at 2/3)
+LIGHT_TYPE_AQUAQUIP           = 2   # confirmed
+LIGHT_TYPE_AQUAQUIP_INSTATOUCH = 3  # confirmed
+LIGHT_TYPE_AQUATIGHT          = 4   # assumed sequential
+LIGHT_TYPE_AQUATIGHT_SUPANOVA = 5   # assumed sequential
+LIGHT_TYPE_ASTRAL_POOL        = 6   # assumed sequential
+LIGHT_TYPE_JANDY              = 7   # assumed sequential
+LIGHT_TYPE_PENTAIR_GLOBRITE   = 8   # assumed sequential
+LIGHT_TYPE_SPA_ELECTRICS      = 9   # assumed sequential
+LIGHT_TYPE_SPA_ELECTRICS_MULTI = 10 # assumed sequential
+LIGHT_TYPE_WATERCO            = 11  # assumed sequential
+LIGHT_TYPE_SR_SMITH_MODLITE   = 12  # assumed sequential
+LIGHT_TYPE_SINGLE_COLOUR      = 13  # assumed sequential
+
+LIGHT_TYPE_NAMES: dict[int, str] = {
+    LIGHT_TYPE_AQUAQUIP:            "Aquaquip",
+    LIGHT_TYPE_AQUAQUIP_INSTATOUCH: "Aquaquip Instatouch",
+    LIGHT_TYPE_AQUATIGHT:           "Aquatight",
+    LIGHT_TYPE_AQUATIGHT_SUPANOVA:  "Aquatight Supa Nova",
+    LIGHT_TYPE_ASTRAL_POOL:         "Astral Pool",
+    LIGHT_TYPE_JANDY:               "Jandy",
+    LIGHT_TYPE_PENTAIR_GLOBRITE:    "Pentair GloBrite",
+    LIGHT_TYPE_SPA_ELECTRICS:       "Spa Electrics",
+    LIGHT_TYPE_SPA_ELECTRICS_MULTI: "Spa Electrics Multi-Plus",
+    LIGHT_TYPE_WATERCO:             "Waterco",
+    LIGHT_TYPE_SR_SMITH_MODLITE:    "Mod-Lite (SR Smith)",
+    LIGHT_TYPE_SINGLE_COLOUR:       "Single Colour",
+}
+
+# Colour/mode lists per light type — order matches app UI (index = colour_index in register)
+# Source: APK arrays.xml (confirmed for Aquaquip Instatouch via hardware button test)
+LIGHT_COLOURS: dict[int, list[str]] = {
+    LIGHT_TYPE_AQUAQUIP: [
+        "Pure Red", "Deep Orange", "Pure Green", "Emerald", "Digital Blue",
+        "Indigo", "Magenta", "Yellow", "Cyan", "RGB White", "Pink",
+        "Pastel Green", "Pastel Blue", "Mauve", "Lime Green", "Baby Blue",
+    ],
+    LIGHT_TYPE_AQUAQUIP_INSTATOUCH: [
+        "Blue", "Aqua", "Green", "Gold", "Magenta", "Red", "White",
+        "Seaside", "Slow Scroll", "Fast Scroll", "Fireworks", "Disco", "Flash",
+    ],
+    LIGHT_TYPE_AQUATIGHT: [
+        "Season Transition", "Daybreak Transition", "Neutral White", "Rainbow",
+        "River of Colours", "Disco", "Four Seasons", "Party", "Sun White",
+        "Red", "Lush Green", "Storm Blue", "Sky Blue", "Sunset Amber", "Violet",
+        "Storm Transition",
+    ],
+    LIGHT_TYPE_AQUATIGHT_SUPANOVA: [
+        "Green", "Blue", "Red and Green", "Red and Blue", "Green and Blue",
+        "Red and Green and Blue", "Red and Green and Blue Fade", "Red Green Blue Fade",
+        "Green Red Blue Fade", "Blue Red Green Fade", "Combo Fade",
+        "Red and Green Blue Fade", "Red and Blue Green Fade", "Green and Blue Red Fade",
+        "Multiple Flash", "Multiple Fade",
+    ],
+    LIGHT_TYPE_ASTRAL_POOL: [
+        "Blue", "Magenta", "Red", "Orange", "Green", "Aqua", "White",
+        "Custom 1", "Custom 2", "Rainbow", "Ocean", "Disco",
+    ],
+    LIGHT_TYPE_JANDY: [
+        "Alpine White", "Sky Blue", "Cobalt Blue", "Caribbean Blue", "Spring Green",
+        "Emerald Green", "Emerald Rose", "Magenta", "Violet",
+        "Slow Colour Splash", "Fast Colour Splash", "America the Beautiful",
+        "Fat Tuesday", "Disco Tech",
+    ],
+    LIGHT_TYPE_PENTAIR_GLOBRITE: [
+        "Sam Mode", "Party Mode", "Romance Mode", "Caribbean Mode", "American Mode",
+        "California Sunset Mode", "Royal Mode",
+        "Blue", "Green", "Red", "White", "Magenta", "Hold", "Recall",
+    ],
+    LIGHT_TYPE_SPA_ELECTRICS: [
+        "Blue", "Magenta", "Red", "Lime", "Green", "Aqua",
+        "Daylight White 4000k", "Warm White 3000k",
+        "Slow Colour Blend", "Fast Colour Change",
+    ],
+    LIGHT_TYPE_SPA_ELECTRICS_MULTI: [
+        "Blue", "Magenta", "Red", "Lime", "Green", "Aqua", "White",
+        "Oceanic Views", "Transcendence", "Outback Australia", "Spring Equinox",
+    ],
+    LIGHT_TYPE_WATERCO: [
+        "White", "Slow Changing Colours", "Fast Changing Colours",
+        "Blue", "Magenta", "Red", "Yellow Green Gold", "Green", "Aqua",
+    ],
+    LIGHT_TYPE_SR_SMITH_MODLITE: [
+        "Slow Colour Change", "White", "Blue", "Green", "Red", "Amber",
+        "Magenta", "Fast Colour Change",
+    ],
+    LIGHT_TYPE_SINGLE_COLOUR: [
+        "Single Colour",
+    ],
+}
+
+# Fallback colour list for unknown types
+LIGHT_COLOURS_DEFAULT = ["Colour 0"]
 
 # ---------------------------------------------------------------------------
 # Device info

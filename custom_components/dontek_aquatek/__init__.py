@@ -16,9 +16,11 @@ from .mqtt_client import AquatekMQTTClient
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [
-    Platform.SELECT,
     Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 

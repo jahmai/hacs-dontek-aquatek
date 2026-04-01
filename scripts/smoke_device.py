@@ -145,6 +145,7 @@ async def run(device_id: str, cert_data: dict, listen_secs: int, button_test: bo
 
     mac = device_id.replace(":", "").replace("-", "").lower()
     topic_status = f"dontek{mac}/status/psw"
+    topic_cmd = f"dontek{mac}/cmd/psw"
     topic_shadow = f"$aws/things/{mac.upper()}_VERSION/shadow/get/+"
     client_id = f"aquatek-{mac}-{uuid.uuid4().hex[:8]}"
 
