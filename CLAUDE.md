@@ -5,9 +5,9 @@ Home Assistant custom integration for the Dontek Aquatek / Theralux Pool+ Manage
 ## Project Structure
 
 ```
-custom_components/aquatek/   — the HACS integration
-hacs.json                    — HACS metadata
-local/                       — gitignored local dev files
+custom_components/dontek_aquatek/   — the HACS integration
+hacs.json                           — HACS metadata
+local/                              — gitignored local dev files
 ```
 
 ## Protocol
@@ -123,28 +123,66 @@ Two VF ports exist but they are **heater type config only** — they determine w
 | 57510 | VF2 type config | 0=None, 1=Gas Heater, 2=Heat Pump (confirmed) |
 | 65485 | Filter pump (serial) | 0=off, 257=spd1, 513=spd2, 769=spd3, 1025=spd4, 65535=auto (confirmed) |
 
+### Temperature Sensors
+
+Three physical temperature sensors. Each has a type config register and a reading register.
+
+| Register | Feature | Values |
+|----------|---------|--------|
+| `65314 + (n-1)` (n = 1–3) | Sensor n type | 0=None, 1=Pool, 2=Roof, 15=Water |
+| `55 + (n-1)` (n = 1–3) | Sensor n reading | value = °C × 2 |
+
+`current_temperature` for heater climate entities is dynamically found by locating the sensor with type=Pool (1).
+
+### Pool Light
+
+The pool light output socket (type 5) has additional config for light brand and colour, packed into a single register:
+
+| Register | Feature | Notes |
+|----------|---------|-------|
+| 65352 | Light type + colour | `(type_index << 8) \| colour_index` — packed |
+
+Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `const.py`.
+
 ### Heating
 
-Two different heater types use fundamentally different control interfaces:
+**Architecture:** Heater 1 = VF1 port (65xxx registers), Heater 2 = VF2 port (57xxx registers). Each heater has a **fixed setpoint register independent of Pool/Spa mode** — the setpoints shown in the app's heater page are per-heater, not per-mode.
 
-**Gas Heater** — controlled via a **fireman's switch** wired to a physical output socket on the controller. Register follows the same socket-output pattern:
-
-| Register | Feature | Notes |
-|----------|---------|-------|
-| 65348 | Gas Heater on/off/auto | 0=off, 2=auto ✓ — socket-output (65334+14) |
-
-**Heat Pump Heater** — connected via **serial cable** to the controller. Registers in the 57xxx range are the serial interface to the heat pump unit. The heat pump has its own dedicated mains power socket (not via the Dontek controller):
+**Heater 1 (VF1)** — Gas Heater or Heat Pump connected to the VF1 port:
 
 | Register | Feature | Notes |
 |----------|---------|-------|
-| 57517 | Heat Pump on/off/auto | 0=off, 2=auto ✓ |
-| 57575 | Pool setpoint | value = °C × 2 (e.g. 32°C = 64) ✓ |
-| 65441 | Spa setpoint | value = °C × 2 (e.g. 38°C = 76) ✓ |
-| 57583 | Heater mode | 0=off, else on — purpose unconfirmed |
+| 65348 | Heater 1 on/off/auto | 0=off, 1=on, 2=auto ✓ — socket-output (65336+12) |
+| 65441 | Heater 1 setpoint | value = °C × 2 (e.g. 38°C = 76) ✓ |
+| 65450 | Heater 1 heating mode | 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ |
+| 65499 | Heater 1 pump type | 0=Filter, 1=Independent ✓ |
+| 65462 | Heater 1 pump speed | 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 ✓ (only when pump type=Independent) |
+| 65451 | Heater 1 cool-down time | minutes |
+| 65501 | Heater 1 sanitiser | bool |
+| 65523 | Heater 1 chilling | bool |
+| 57586 | Heater 1 hydrotherapy | bool |
+| 65500 | Run Till Heated | bool (shared / Heater 1 context) |
+
+**Heater 2 (VF2)** — Heat Pump connected to the VF2 port via serial cable:
+
+| Register | Feature | Notes |
+|----------|---------|-------|
+| 57517 | Heater 2 on/off/auto | 0=off, 2=auto ✓ |
+| 57575 | Heater 2 setpoint | value = °C × 2 (e.g. 32°C = 64) ✓ |
+| 57566 | Heater 2 heating mode | 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ |
+| 57574 | Heater 2 pump type + sensor loc | packed: low byte = pump type (0=Filter, 1=Indep); high byte = sensor location (1=Filter, 2=Heater Line) |
+| 57568 | Heater 2 cool-down time | minutes |
+| 57570 | Heater 2 sanitiser | bool |
+| 57569 | Heater 2 chilling | bool |
+| 57587 | Heater 2 hydrotherapy | bool |
+| 57578 | Heater 2 Track / Setback | bool — enables tracking Heater 1 setpoint with an offset |
+| 57579 | Heater 2 setback temperature | stored as positive integer, 0.5°C steps; read: `-(val × 0.5)` °C; range 0 to −15°C |
+| 57577 | Boost (Party Mode) | bool |
+| 57583 | Heater mode | value=0 observed; purpose unconfirmed |
 | 57650 | Filter time 1 | |
 | 57670 | Filter time 2 | |
 
-The active setpoint register depends on Pool/Spa mode (65313): pool mode reads/writes 57575; spa mode reads/writes 65441.
+> **VF2 pump type / sensor location register (57574):** Two separate logical settings share one register. Use read-modify-write to change either field without stomping the other. Pump type occupies the lower value bits (0=Filter, 1=Independent); sensor location values are 1=Filter, 2=Heater Line (only appears in app when pump type=Independent).
 
 ### Pool / Spa Mode
 
@@ -180,13 +218,34 @@ Entities must be **auto-discovered** from the socket config registers on connect
 
 **Current entities:**
 
-| Platform | Entity | Source |
-|----------|--------|--------|
-| `select` | One per configured socket (auto-discovered) | Socket type → name; reg 65336+(n-1) |
-| `select` | Filter Pump | reg 65485 (0/257/513/769/1025/65535) |
-| `select` | Gas Heater | reg 65348 (0=off, 2=auto) |
-| `select` | Pool/Spa Mode | reg 65313 (0=Pool, 1=Spa) |
-| `climate` | Heat Pump | 57517 (on/off), 57575 (pool setpoint), 65441 (spa setpoint) |
+| Platform | Entity | Register(s) |
+|----------|--------|-------------|
+| `select` | One per configured socket (auto-discovered) | 65336+(n-1); type from 65323+(n-1) |
+| `select` | Filter Pump | 65485 (0/257/513/769/1025/65535) |
+| `select` | Pool/Spa Mode | 65313 (0=Pool, 1=Spa) |
+| `select` | Light Type | 65352 upper byte |
+| `select` | Light Colour | 65352 lower byte (options vary per brand) |
+| `select` | Heater 1 Heating Mode | 65450 (0=Off, 2=Pool & Spa, 3=Pool, 4=Spa) |
+| `select` | Heater 1 Pump Type | 65499 (0=Filter, 1=Independent) |
+| `select` | Heater 1 Pump Speed | 65462 (0–3 = Speed 1–4) |
+| `select` | Heater 2 Heating Mode | 57566 (same values) |
+| `select` | Heater 2 Pump Type | 57574 low bits |
+| `select` | Heater 2 Sensor Location | 57574 high bits (1=Filter, 2=Heater Line) |
+| `climate` | Heater 1 | ctrl=65348, setpoint=65441 |
+| `climate` | Heater 2 | ctrl=57517, setpoint=57575 |
+| `switch` | Run Till Heated | 65500 |
+| `switch` | Boost (Party Mode) | 57577 |
+| `switch` | Heater 1 Sanitiser | 65501 |
+| `switch` | Heater 1 Chilling | 65523 |
+| `switch` | Heater 1 Hydrotherapy | 57586 |
+| `switch` | Heater 2 Sanitiser | 57570 |
+| `switch` | Heater 2 Chilling | 57569 |
+| `switch` | Heater 2 Hydrotherapy | 57587 |
+| `switch` | Heater 2 Track / Setback | 57578 |
+| `number` | Heater 1 Cool-Down Time | 65451 (minutes, 0–60) |
+| `number` | Heater 2 Cool-Down Time | 57568 (minutes, 0–60) |
+| `number` | Heater 2 Setback Temperature | 57579 (0 to −15°C, 0.5°C steps) |
+| `sensor` | Temperature Sensor 1/2/3 | 55+(n-1); type from 65314+(n-1) |
 | `sensor` | Connection Status | — |
 | `sensor` | Device Name | 65488–65495 |
 
@@ -217,10 +276,11 @@ The flow:
 | `coordinator.py` | Push-based DataUpdateCoordinator |
 | `config_flow.py` | HA config flow UI |
 | `entity_base.py` | Shared base class |
-| `switch.py` | Binary on/off entities |
-| `number.py` | Pump speed controls |
-| `climate.py` | Heater setpoint + mode |
-| `sensor.py` | Connection status + device name |
+| `switch.py` | Bool entities (boost, run-till-heated, sanitiser, chilling, hydro, track/setback) |
+| `number.py` | Cool-down time and setback temperature |
+| `climate.py` | Heater 1 and Heater 2 climate entities |
+| `select.py` | Socket outputs, filter pump, pool/spa mode, light type/colour, VF config |
+| `sensor.py` | Temperature sensors, connection status, device name |
 
 ## Development
 
@@ -254,6 +314,9 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 
 - Solar register bit mask — `57585=65` (= 0x41, bit 0 set) observed in state dump; bit 0 = solar enabled confirmed, other bits unknown
 - `57583` (Heater mode) — value=0 in state dump while HP heater was auto; purpose unclear, may overlap with 57517
+- **VF1 sensor location register** — unconfirmed. The "Sensor Location" option only appears in the app when Heater 1 pump type is set to Independent. Needs a dedicated button test on that screen.
+- **VF2 pump speed** — unknown if VF2 has a pump speed setting like VF1. Likely only relevant when VF2 pump type=Independent.
+- **VF2 pump type / sensor location packing** — the read-modify-write split at reg 57574 is inferred from the app UI; exact bit layout not confirmed from raw register dumps.
 
 ## Confirmed via Live Hardware
 
@@ -279,5 +342,22 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 
 ### 2026-03-31
 - **65313 = Pool/Spa mode** — 0=Pool, 1=Spa (write to switch modes)
-- **65441 = Spa setpoint** — value = °C × 2 (38°C=76); separate from pool setpoint at 57575
-- Heat pump reads/writes the correct setpoint based on current Pool/Spa mode
+- **65441 = Heater 1 setpoint** — value = °C × 2 (38°C=76); this is VF1's fixed setpoint, not a spa-mode-dependent register
+- **57575 = Heater 2 setpoint** — value = °C × 2 (32°C=64); this is VF2's fixed setpoint
+- Setpoints are per-heater, not per pool/spa mode — earlier assumption was wrong
+
+### 2026-04-01
+- **65348 = Heater 1 (VF1) on/off/on** — 0=off, 1=on, 2=auto ✓ (Gas Heater also supports manual On)
+- **65450 = Heater 1 heating mode** — 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ (was wrongly documented as 65449)
+- **65499 = Heater 1 pump type** — 0=Filter, 1=Independent ✓ (confirmed via button test)
+- **65462 = Heater 1 pump speed** — 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 ✓ (was initially misidentified as sensor location)
+- **57566 = Heater 2 heating mode** — 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓
+- **57577 = Boost (Party Mode)** — bool ✓
+- **65500 = Run Till Heated** — bool ✓
+- **57578 = Heater 2 Track / Setback** — same register controls both track-heater-1 and setback toggle ✓
+- **57579 = Heater 2 setback temperature** — stored as positive integer, 0.5°C steps (val=6 → −3°C) ✓
+- **65501 = Heater 1 sanitiser**, **65523 = Heater 1 chilling**, **57586 = Heater 1 hydrotherapy** ✓
+- **57570 = Heater 2 sanitiser**, **57569 = Heater 2 chilling**, **57587 = Heater 2 hydrotherapy** ✓
+- **Hydrotherapy** option only appears in app after Chilling is enabled
+- **Temperature sensors**: 3 physical sensors; type at 65314+(n-1), reading at 55+(n-1), value = °C × 2
+- **Pool light control**: reg 65352, packed as `(type_index << 8) | colour_index`
