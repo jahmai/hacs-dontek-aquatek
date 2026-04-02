@@ -30,6 +30,7 @@ from .const import (
     REG_SOCKET_OUTPUT_BASE,
     REG_VF1_HEAT_MODE,
     REG_VF1_PUMP_TYPE,
+    REG_VF1_SENSOR_LOC,
     REG_VF1_PUMP_SPEED,
     REG_VF2_HEAT_MODE,
     REG_VF2_PUMP_TYPE,
@@ -37,12 +38,10 @@ from .const import (
     SOCKET_TYPE_NAMES,
     SOCKET_TYPE_POOL_LIGHT,
     VF1_PUMP_TYPE_OPTIONS,
-    VF1_PUMP_TYPE_VALUES,
+    VF1_SENSOR_LOC_OPTIONS,
+    VF1_SENSOR_LOC_VALUES,
     VF1_PUMP_SPEED_OPTIONS,
     VF1_PUMP_SPEED_VALUES,
-    VF2_PUMP_TYPE_OPTIONS,
-    VF2_SENSOR_LOC_OPTIONS,
-    VF2_SENSOR_LOC_VALUES,
     VF_HEAT_MODE_OPTIONS,
     VF_HEAT_MODE_VALUES,
 )
@@ -84,6 +83,7 @@ async def async_setup_entry(
         AquatekVFHeatModeSelect(coordinator, "heater_1_heat_mode", "Heater 1 Mode", REG_VF1_HEAT_MODE),
         AquatekVFHeatModeSelect(coordinator, "heater_2_heat_mode", "Heater 2 Mode", REG_VF2_HEAT_MODE),
         AquatekVF1PumpTypeSelect(coordinator),
+        AquatekVF1SensorLocSelect(coordinator),
         AquatekVF1PumpSpeedSelect(coordinator),
         AquatekVF2PumpTypeSelect(coordinator),
         AquatekVF2SensorLocSelect(coordinator),
@@ -306,29 +306,78 @@ class AquatekVFHeatModeSelect(AquatekEntity, SelectEntity):
         await self.coordinator.async_write_register(self._register, [val])
 
 
-class AquatekVF1PumpTypeSelect(AquatekEntity, SelectEntity):
-    """VF1 pump type: Filter or Independent (reg 65450)."""
+class _AquatekVFPumpTypeSelect(AquatekEntity, SelectEntity):
+    """Base for VF pump type selects (Filter / Independent).
 
-    _attr_name = "Heater 1 Pump Type"
+    Both VF1 and VF2 share the same packed register encoding:
+      0 = Filter; 1 = Independent+FilterSensor; 2 = Independent+HeaterLineSensor.
+    Switching to Independent preserves the existing sensor location if already set.
+    """
+
     _attr_options = VF1_PUMP_TYPE_OPTIONS
     _attr_icon = "mdi:pump"
+    _register: int
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        return VF1_PUMP_TYPE_OPTIONS[0] if val == 0 else VF1_PUMP_TYPE_OPTIONS[1]
+
+    async def async_select_option(self, option: str) -> None:
+        if option == VF1_PUMP_TYPE_OPTIONS[0]:
+            await self.coordinator.async_write_register(self._register, [0])
+        else:
+            current = self._reg(self._register) or 0
+            val = current if current in (1, 2) else 1
+            await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekVF1PumpTypeSelect(_AquatekVFPumpTypeSelect):
+    """VF1 (Heater 1) pump type select."""
+
+    _attr_name = "Heater 1 Pump Type"
+    _register = REG_VF1_PUMP_TYPE
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_1_pump_type")
 
+
+class _AquatekVFSensorLocSelect(AquatekEntity, SelectEntity):
+    """Base for VF sensor location selects (Filter / Heater Line).
+
+    Both VF1 and VF2 share the same register encoding: 1=Filter, 2=Heater Line.
+    Only meaningful when the corresponding pump type is Independent.
+    """
+
+    _attr_options = VF1_SENSOR_LOC_OPTIONS
+    _attr_icon = "mdi:thermometer-water"
+    _register: int
+
     @property
     def current_option(self) -> str | None:
-        val = self._reg(REG_VF1_PUMP_TYPE)
-        if val is None:
+        val = self._reg(self._register)
+        if val is None or val == 0:
             return None
         try:
-            return VF1_PUMP_TYPE_OPTIONS[VF1_PUMP_TYPE_VALUES.index(val)]
+            return VF1_SENSOR_LOC_OPTIONS[VF1_SENSOR_LOC_VALUES.index(val)]
         except ValueError:
-            return "Filter"
+            return VF1_SENSOR_LOC_OPTIONS[0]
 
     async def async_select_option(self, option: str) -> None:
-        val = VF1_PUMP_TYPE_VALUES[VF1_PUMP_TYPE_OPTIONS.index(option)]
-        await self.coordinator.async_write_register(REG_VF1_PUMP_TYPE, [val])
+        val = VF1_SENSOR_LOC_VALUES[VF1_SENSOR_LOC_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekVF1SensorLocSelect(_AquatekVFSensorLocSelect):
+    """VF1 (Heater 1) sensor location select."""
+
+    _attr_name = "Heater 1 Sensor Location"
+    _register = REG_VF1_SENSOR_LOC
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "heater_1_sensor_location")
 
 
 class AquatekVF1PumpSpeedSelect(AquatekEntity, SelectEntity):
@@ -356,60 +405,21 @@ class AquatekVF1PumpSpeedSelect(AquatekEntity, SelectEntity):
         await self.coordinator.async_write_register(REG_VF1_PUMP_SPEED, [val])
 
 
-class AquatekVF2PumpTypeSelect(AquatekEntity, SelectEntity):
-    """VF2 pump type: Filter or Independent (reg 57574, upper decode).
-
-    0=Filter; 1 or 2=Independent (sensor loc encoded in same reg).
-    When switching to Independent, preserves existing sensor location if set.
-    """
+class AquatekVF2PumpTypeSelect(_AquatekVFPumpTypeSelect):
+    """VF2 (Heater 2) pump type select."""
 
     _attr_name = "Heater 2 Pump Type"
-    _attr_options = VF2_PUMP_TYPE_OPTIONS
-    _attr_icon = "mdi:pump"
+    _register = REG_VF2_PUMP_TYPE
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_2_pump_type")
 
-    @property
-    def current_option(self) -> str | None:
-        val = self._reg(REG_VF2_PUMP_TYPE)
-        if val is None:
-            return None
-        return "Filter" if val == 0 else "Independent"
 
-    async def async_select_option(self, option: str) -> None:
-        if option == "Filter":
-            await self.coordinator.async_write_register(REG_VF2_PUMP_TYPE, [0])
-        else:
-            # Independent: preserve current sensor loc (1 or 2); default to 1
-            current = self._reg(REG_VF2_PUMP_TYPE) or 0
-            val = current if current in (1, 2) else 1
-            await self.coordinator.async_write_register(REG_VF2_PUMP_TYPE, [val])
-
-
-class AquatekVF2SensorLocSelect(AquatekEntity, SelectEntity):
-    """VF2 sensor location: Filter or Heater Line (reg 57574, lower decode).
-
-    1=Filter sensor, 2=Heater Line. Only meaningful when pump type=Independent.
-    """
+class AquatekVF2SensorLocSelect(_AquatekVFSensorLocSelect):
+    """VF2 (Heater 2) sensor location select."""
 
     _attr_name = "Heater 2 Sensor Location"
-    _attr_options = VF2_SENSOR_LOC_OPTIONS
-    _attr_icon = "mdi:thermometer-water"
+    _register = REG_VF2_SENSOR_LOC
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_2_sensor_location")
-
-    @property
-    def current_option(self) -> str | None:
-        val = self._reg(REG_VF2_SENSOR_LOC)
-        if val is None or val == 0:
-            return None
-        try:
-            return VF2_SENSOR_LOC_OPTIONS[VF2_SENSOR_LOC_VALUES.index(val)]
-        except ValueError:
-            return "Filter"
-
-    async def async_select_option(self, option: str) -> None:
-        val = VF2_SENSOR_LOC_VALUES[VF2_SENSOR_LOC_OPTIONS.index(option)]
-        await self.coordinator.async_write_register(REG_VF2_SENSOR_LOC, [val])

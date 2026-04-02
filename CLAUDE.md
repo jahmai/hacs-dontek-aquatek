@@ -148,14 +148,15 @@ Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `cons
 
 **Architecture:** Heater 1 = VF1 port (65xxx registers), Heater 2 = VF2 port (57xxx registers). Each heater has a **fixed setpoint register independent of Pool/Spa mode** — the setpoints shown in the app's heater page are per-heater, not per-mode.
 
-**Heater 1 (VF1)** — Gas Heater or Heat Pump connected to the VF1 port:
+**Heater 1 (VF1)** — Gas Heater on tested device (app label "Heater 1" = VF1 type):
 
 | Register | Feature | Notes |
 |----------|---------|-------|
+| 81 | Heater 1 status | see heater status code table below ✓ |
 | 65348 | Heater 1 on/off/auto | 0=off, 1=on, 2=auto ✓ — socket-output (65336+12) |
 | 65441 | Heater 1 setpoint | value = °C × 2 (e.g. 38°C = 76) ✓ |
 | 65450 | Heater 1 heating mode | 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ |
-| 65499 | Heater 1 pump type | 0=Filter, 1=Independent ✓ |
+| 65499 | Heater 1 pump type + sensor location | 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLine ✓ |
 | 65462 | Heater 1 pump speed | 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 ✓ (only when pump type=Independent) |
 | 65451 | Heater 1 cool-down time | minutes |
 | 65501 | Heater 1 sanitiser | bool |
@@ -163,10 +164,11 @@ Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `cons
 | 57586 | Heater 1 hydrotherapy | bool |
 | 65500 | Run Till Heated | bool (shared / Heater 1 context) |
 
-**Heater 2 (VF2)** — Heat Pump connected to the VF2 port via serial cable:
+**Heater 2 (VF2)** — Heat Pump on tested device (app label "Heater 2" = VF2 type):
 
 | Register | Feature | Notes |
 |----------|---------|-------|
+| 184 | Heater 2 status | see heater status code table below ✓ |
 | 57517 | Heater 2 on/off/auto | 0=off, 2=auto ✓ |
 | 57575 | Heater 2 setpoint | value = °C × 2 (e.g. 32°C = 64) ✓ |
 | 57566 | Heater 2 heating mode | 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ |
@@ -183,6 +185,43 @@ Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `cons
 | 57670 | Filter time 2 | |
 
 > **VF2 pump type / sensor location register (57574):** Two separate logical settings share one register. Use read-modify-write to change either field without stomping the other. Pump type occupies the lower value bits (0=Filter, 1=Independent); sensor location values are 1=Filter, 2=Heater Line (only appears in app when pump type=Independent).
+
+**Heater status code table** (APK `e3/f.java`, applies to both heaters):
+
+| Code | Label | Notes |
+|------|-------|-------|
+| 0 | Off / Waiting | "Off" when ctrl=0; treat as code 1 (Waiting) when ctrl≠0 |
+| 1 | Waiting | Transient armed-but-idle state |
+| 2 | Sampling | |
+| 3 | Checking | |
+| 4 | Heating | |
+| 5 | Run On | Cool-down after heating |
+| 6 | Limit | |
+| 7 | Stopping | |
+| 8 | Fault | |
+| 9 | Waiting (Solar Priority) | |
+| 10 | Chilling | |
+| 11 | Off in Pool | Device sends when ctrl=0 and in Pool mode; display as "Off". When ctrl≠0 treat as mode-blocked Waiting. |
+| 12 | Off in Spa | Same as 11 but for Spa mode |
+
+Waiting mode context labels: if the heater is Waiting (codes 0/1/11/12 with ctrl≠0) and its configured heating mode conflicts with the active Pool/Spa mode, append the blocking mode — e.g. "Waiting (Pool Mode)" when heat_mode=4 (Spa-only) but controller is in Pool mode.
+
+**Filter pump status code table** (APK `e3/h.java`, register 92 high byte):
+
+| Code(s) | Label |
+|---------|-------|
+| 0, 1 | Off |
+| 2, 3, 4 | Power Up |
+| 5 | Priming |
+| 6, 7, 8 | Set Speed |
+| 9, 10, 11 | On |
+| 12 | Running |
+| 13, 19 | Run On |
+| 14, 15, 16 | Power Down |
+| 17 | Fault |
+| 18 | Prime Off |
+
+Register 92 format: `(state_byte << 8) | speed_byte`. Speed byte is 0-indexed (0=Speed 1). Speed is only meaningful when state is in the running set {5, 6, 7, 8, 9, 10, 11, 12, 13} — stale in Off/Fault states.
 
 ### Pool / Spa Mode
 
@@ -226,11 +265,12 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `select` | Light Type | 65352 upper byte |
 | `select` | Light Colour | 65352 lower byte (options vary per brand) |
 | `select` | Heater 1 Heating Mode | 65450 (0=Off, 2=Pool & Spa, 3=Pool, 4=Spa) |
-| `select` | Heater 1 Pump Type | 65499 (0=Filter, 1=Independent) |
+| `select` | Heater 1 Pump Type | 65499 (0=Filter, non-zero=Independent) |
+| `select` | Heater 1 Sensor Location | 65499 (1=Filter, 2=Heater Line) |
 | `select` | Heater 1 Pump Speed | 65462 (0–3 = Speed 1–4) |
 | `select` | Heater 2 Heating Mode | 57566 (same values) |
-| `select` | Heater 2 Pump Type | 57574 low bits |
-| `select` | Heater 2 Sensor Location | 57574 high bits (1=Filter, 2=Heater Line) |
+| `select` | Heater 2 Pump Type | 57574 (0=Filter, non-zero=Independent) |
+| `select` | Heater 2 Sensor Location | 57574 (1=Filter, 2=Heater Line) |
 | `climate` | Heater 1 | ctrl=65348, setpoint=65441 |
 | `climate` | Heater 2 | ctrl=57517, setpoint=57575 |
 | `switch` | Run Till Heated | 65500 |
@@ -245,6 +285,8 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `number` | Heater 1 Cool-Down Time | 65451 (minutes, 0–60) |
 | `number` | Heater 2 Cool-Down Time | 57568 (minutes, 0–60) |
 | `number` | Heater 2 Setback Temperature | 57579 (0 to −15°C, 0.5°C steps) |
+| `sensor` | Heater 1 Status | 81 |
+| `sensor` | Heater 2 Status | 184 |
 | `sensor` | Temperature Sensor 1/2/3 | 55+(n-1); type from 65314+(n-1) |
 | `sensor` | Connection Status | — |
 | `sensor` | Device Name | 65488–65495 |
@@ -314,7 +356,7 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 
 - Solar register bit mask — `57585=65` (= 0x41, bit 0 set) observed in state dump; bit 0 = solar enabled confirmed, other bits unknown
 - `57583` (Heater mode) — value=0 in state dump while HP heater was auto; purpose unclear, may overlap with 57517
-- **VF1 sensor location register** — unconfirmed. The "Sensor Location" option only appears in the app when Heater 1 pump type is set to Independent. Needs a dedicated button test on that screen.
+- **VF1 sensor location** — confirmed identical packing to VF2: reg 65499, 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLineSensor ✓
 - **VF2 pump speed** — unknown if VF2 has a pump speed setting like VF1. Likely only relevant when VF2 pump type=Independent.
 - **VF2 pump type / sensor location packing** — the read-modify-write split at reg 57574 is inferred from the app UI; exact bit layout not confirmed from raw register dumps.
 
@@ -349,7 +391,7 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 ### 2026-04-01
 - **65348 = Heater 1 (VF1) on/off/on** — 0=off, 1=on, 2=auto ✓ (Gas Heater also supports manual On)
 - **65450 = Heater 1 heating mode** — 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓ (was wrongly documented as 65449)
-- **65499 = Heater 1 pump type** — 0=Filter, 1=Independent ✓ (confirmed via button test)
+- **65499 = Heater 1 pump type + sensor location** — identical packing to VF2/57574: 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLineSensor ✓
 - **65462 = Heater 1 pump speed** — 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 ✓ (was initially misidentified as sensor location)
 - **57566 = Heater 2 heating mode** — 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa ✓
 - **57577 = Boost (Party Mode)** — bool ✓
@@ -361,3 +403,16 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 - **Hydrotherapy** option only appears in app after Chilling is enabled
 - **Temperature sensors**: 3 physical sensors; type at 65314+(n-1), reading at 55+(n-1), value = °C × 2
 - **Pool light control**: reg 65352, packed as `(type_index << 8) | colour_index`
+
+### 2026-04-01 (continued)
+- **65499 = Heater 1 pump type + sensor location** — identical packing to VF2 (57574): 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLineSensor ✓
+- VF1 and VF2 use the exact same packed register encoding for pump type and sensor location
+
+### 2026-04-02
+- **81 = Heater 1 (Gas Heater / VF1) status** ✓ — confirmed via live dump with heater in "Run On" (code 5); reg 81=5 matched exactly. Prior assumption of reg 185 was wrong.
+- **184 = Heater 2 (Heat Pump / VF2) status** ✓ — previously confirmed in Pool mode, re-confirmed in Spa mode (reg 184=4 = Heating)
+- **reg 185 is NOT a heater status register** — was assigned by adjacency to 184; discard that assumption
+- **App label mapping confirmed**: "Heater 1" in app = VF1 (Gas Heater); "Heater 2" in app = VF2 (Heat Pump)
+- **Heater status code table confirmed** (APK `e3/f.java`): 0=Off/Waiting, 1=Waiting, 2=Sampling, 3=Checking, 4=Heating, 5=Run On, 6=Limit, 7=Stopping, 8=Fault, 9=Waiting(Solar), 10=Chilling, 11=Off in Pool, 12=Off in Spa
+- **Codes 11/12 behaviour**: device sends code 11 ("Off in Pool") even when ctrl=0 (heater explicitly off). When ctrl=0, display as "Off". When ctrl≠0, treat same as code 1 (Waiting) and apply mode-conflict labelling.
+- **Filter pump full state table confirmed** (APK `e3/h.java`): 0-1=Off, 2-4=Power Up, 5=Priming, 6-8=Set Speed, 9-11=On, 12=Running, 13/19=Run On, 14-16=Power Down, 17=Fault, 18=Prime Off. States 6-8 (Set Speed) include active speed byte.

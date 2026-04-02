@@ -35,7 +35,7 @@ WATCHDOG_TIMEOUT = 600  # mark offline if no status message in this many seconds
 # CONTROLLER OUTPUT ARCHITECTURE
 # --------------------------------
 # 5 Sockets   — relay outputs; each assigned an appliance type in the app
-# 2 VF ports  — heater type assignment only (Gas Heater or Heat Pump)
+# 2 VF ports  — heater type assignment only (Heater 1 or Heater 2)
 # 1 Filter pump serial port — dedicated speed-control serial connection
 #
 # SOCKET REGISTERS
@@ -91,7 +91,7 @@ REG_POOL_SPA_MODE = 65313
 
 # ---------------------------------------------------------------------------
 # VF port type config (which heater is connected to each VF port)
-# Values: 0=None, 1=Gas Heater, 2=Heat Pump
+# Values: 0=None, 1=Heater 1, 2=Heater 2
 REG_VF1_TYPE = 65335             # VF port 1 type config (confirmed)
 REG_VF2_TYPE = 57510             # VF port 2 type config (confirmed)
 
@@ -106,14 +106,14 @@ REG_FILTER_PUMP = 65485
 
 # ---------------------------------------------------------------------------
 # Heater control registers
-# Gas Heater:  controlled via fireman's switch wired to a socket-output register
-#              Output register follows the same 65336+ range as sockets.
-#              Confirmed at reg 65348 on tested hardware (socket index 13 = 65336+12).
-# Heat Pump:   connected via serial cable; controlled in the 57xxx register range.
-REG_GAS_HEATER_CTRL = 65348      # Gas Heater on/off/auto: 0=off, 1=on, 2=auto (confirmed)
-REG_HEAT_PUMP_CTRL = 57517       # Heat Pump on/off/auto:  0=off, 2=auto (confirmed)
-REG_HEAT_SETPOINT = 57575        # Heat Pump setpoint (Heater 2 / Pool): value = °C × 2 (confirmed)
-REG_SPA_SETPOINT = 65441         # Gas Heater setpoint (Heater 1 / Spa): value = °C × 2 (confirmed)
+# Heater 1: controlled via fireman's switch wired to a socket-output register
+#            Output register follows the same 65336+ range as sockets.
+#            Confirmed at reg 65348 on tested hardware (socket index 13 = 65336+12).
+# Heater 2: connected via serial cable; controlled in the 57xxx register range.
+REG_HEATER1_CTRL = 65348      # Heater 1 on/off/auto: 0=off, 1=on, 2=auto (confirmed)
+REG_HEATER2_CTRL = 57517      # Heater 2 on/off/auto: 0=off, 2=auto (confirmed)
+REG_HEAT_SETPOINT = 57575     # Heater 2 setpoint (Pool): value = °C × 2 (confirmed)
+REG_SPA_SETPOINT = 65441      # Heater 1 setpoint (Spa): value = °C × 2 (confirmed)
 REG_BOOST_MODE = 57577           # Heater 2 boost/party mode: 0=off, 1=on (confirmed)
 REG_RUN_TILL_HEATED = 65500      # Heater 1 run till heated: 0=off, 1=on (confirmed)
 
@@ -122,19 +122,18 @@ REG_RUN_TILL_HEATED = 65500      # Heater 1 run till heated: 0=off, 1=on (confir
 # VF1 = Heater 1 (65xxx registers), VF2 = Heater 2 (57xxx registers)
 #
 # Heating mode values: 0=Off, 2=Pool & Spa, 3=Pool, 4=Spa (confirmed both VFs)
-# Pump type values:
-#   VF1 (65450): 2=Filter, 4=Independent (confirmed)
-#   VF2 (57574): 0=Filter, 1=Independent/Filter sensor, 2=Independent/Heater Line sensor
-# Sensor location (VF1 only, separate reg):
-#   65462: 0=Filter, 1=Heater Line (only shown when pump type = Independent)
+# Pump type + sensor location — identical packing for both VFs (confirmed):
+#   0 = Filter (no sensor location)
+#   1 = Independent + Filter sensor
+#   2 = Independent + Heater Line sensor
 
 REG_VF1_HEAT_MODE    = 65450     # VF1 heating mode (0=Off, 2=Pool&Spa, 3=Pool, 4=Spa)
 REG_VF1_COOLDOWN     = 65451     # VF1 cool down time in minutes
 REG_VF1_SANITISER    = 65501     # VF1 sanitiser: 0=off, 1=on
-REG_VF1_PUMP_TYPE    = 65499     # VF1 pump type: 0=Filter, 1=Independent, 2=? (confirmed 0/1)
+REG_VF1_PUMP_TYPE    = 65499     # VF1 pump type+sensor combined: 0=Filter, 1=Indep/Filter, 2=Indep/HeaterLine (confirmed)
+REG_VF1_SENSOR_LOC   = 65499     # same register — sensor location encoded as 1=Filter, 2=HeaterLine
 REG_VF1_PUMP_SPEED   = 65462     # VF1 pump speed: 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 (confirmed)
-# REG_VF1_SENSOR_LOC: register not yet confirmed — needs dedicated button test
-REG_VF1_CHILLING     = 65523     # VF1 chilling: 0=off, 1=on (Heat Pump type only)
+REG_VF1_CHILLING     = 65523     # VF1 chilling: 0=off, 1=on (Heater 2 type only)
 REG_VF1_HYDRO        = 57586     # VF1 hydrotherapy: 0=off, 1=on
 
 REG_VF2_HEAT_MODE    = 57566     # VF2 heating mode (0=Off, 2=Pool&Spa, 3=Pool, 4=Spa)
@@ -142,7 +141,7 @@ REG_VF2_COOLDOWN     = 57568     # VF2 cool down time in minutes
 REG_VF2_SANITISER    = 57570     # VF2 sanitiser: 0=off, 1=on
 REG_VF2_PUMP_TYPE    = 57574     # VF2 pump type+sensor combined: 0=Filter, 1=Indep/Filter, 2=Indep/HeaterLine
 REG_VF2_SENSOR_LOC   = 57574     # same register — sensor location encoded as 1=Filter, 2=HeaterLine
-REG_VF2_CHILLING     = 57569     # VF2 chilling: 0=off, 1=on (Heat Pump type only)
+REG_VF2_CHILLING     = 57569     # VF2 chilling: 0=off, 1=on (Heater 2 type only)
 REG_VF2_HYDRO        = 57587     # VF2 hydrotherapy: 0=off, 1=on
 REG_VF2_SETBACK      = 57578     # VF2 setback: 0=off, 1=on (Secondary Heating only)
 REG_VF2_SETBACK_TEMP = 57579     # VF2 setback temperature offset: stored as positive 0.5°C steps (e.g. 6=−3°C)
@@ -151,7 +150,10 @@ VF_HEAT_MODE_OPTIONS = ["Off", "Pool & Spa", "Pool", "Spa"]
 VF_HEAT_MODE_VALUES  = [0, 2, 3, 4]
 
 VF1_PUMP_TYPE_OPTIONS = ["Filter", "Independent"]
-VF1_PUMP_TYPE_VALUES  = [0, 1]  # confirmed
+VF1_PUMP_TYPE_VALUES  = [0, 1]  # 0=Filter, non-zero=Independent (confirmed)
+
+VF1_SENSOR_LOC_OPTIONS = ["Filter", "Heater Line"]
+VF1_SENSOR_LOC_VALUES  = [1, 2]  # 1=Filter sensor, 2=Heater Line sensor (confirmed)
 
 VF1_PUMP_SPEED_OPTIONS = ["Speed 1", "Speed 2", "Speed 3", "Speed 4"]
 VF1_PUMP_SPEED_VALUES  = [0, 1, 2, 3]  # confirmed
@@ -287,6 +289,65 @@ LIGHT_COLOURS: dict[int, list[str]] = {
 
 # Fallback colour list for unknown types
 LIGHT_COLOURS_DEFAULT = ["Colour 0"]
+
+# ---------------------------------------------------------------------------
+# Status registers (read-only, pushed by the device on state changes)
+#
+# Filter pump packed status — confirmed via APK f3/l.java line 212:
+#   state = (reg92 & 0xFF00) >> 8   (high byte)
+#   speed = reg92 & 0x00FF          (low byte, 0-indexed: 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4)
+# Speed byte is stale when pump is off — only valid for running states (5, 9-13).
+# State values from e3.h.g(): 0-1=Off, 5=Priming, 9-11=On, 12=Running, 13=Run On, 17=Fault
+#
+# Last-ran-at register — packed as (hours << 8) | minutes; 65535 = no data
+# (Observed to update to current time when the pump transitions to Off)
+#
+# Heater status registers — reg 184 = Heater 1, reg 185 = Heater 2.
+# Both heaters share the same status code table (HEATER_STATUS_NAMES).
+# Values taken directly from APK e3/f.java method a(int, f.m, String[]).
+REG_FILTER_PUMP_STATUS = 92
+REG_FILTER_PUMP_LAST_RAN = 94
+REG_HEATER1_STATUS = 81
+REG_HEATER2_STATUS = 184
+
+HEATER_STATUS_NAMES: dict[int, str] = {
+    0: "Off",
+    1: "Waiting",
+    2: "Sampling",
+    3: "Checking",
+    4: "Heating",
+    5: "Run On",
+    6: "Limit",
+    7: "Stopping",
+    8: "Fault",
+    9: "Waiting (Solar Priority)",
+    10: "Chilling",
+    11: "Off in Pool",
+    12: "Off in Spa",
+}
+
+FILTER_PUMP_STATUS_NAMES: dict[int, str] = {
+    0: "Off",
+    1: "Off",
+    2: "Power Up",
+    3: "Power Up",
+    4: "Power Up",
+    5: "Priming",
+    6: "Set Speed",
+    7: "Set Speed",
+    8: "Set Speed",
+    9: "On",
+    10: "On",
+    11: "On",
+    12: "Running",
+    13: "Run On",
+    14: "Power Down",
+    15: "Power Down",
+    16: "Power Down",
+    17: "Fault",
+    18: "Prime Off",
+    19: "Run On",
+}
 
 # ---------------------------------------------------------------------------
 # Device info

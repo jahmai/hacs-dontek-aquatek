@@ -1,8 +1,8 @@
 """Climate entities for the Dontek Aquatek heaters.
 
 Two independent heaters, each with their own setpoint register:
-  - Gas Heater (Heater 1): on/off via 65348, setpoint via 65441 (labeled "Spa" in app)
-  - Heat Pump  (Heater 2): on/off via 57517, setpoint via 57575 (labeled "Pool" in app)
+  - Heater 1: on/off via 65348, setpoint via 65441 (labeled "Spa" in app)
+  - Heater 2: on/off via 57517, setpoint via 57575 (labeled "Pool" in app)
 
 Setpoints are encoded as °C × 2 (e.g. 32°C is stored as 64).
 The setpoints are independent of Pool/Spa mode — they are per-heater controls.
@@ -25,8 +25,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
-    REG_GAS_HEATER_CTRL,
-    REG_HEAT_PUMP_CTRL,
+    REG_HEATER1_CTRL,
+    REG_HEATER2_CTRL,
     REG_HEAT_SETPOINT,
     REG_SENSOR_READING_BASE,
     REG_SENSOR_TYPE_BASE,
@@ -54,9 +54,9 @@ async def async_setup_entry(
 
 
 class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
-    """Shared base for gas heater and heat pump climate entities."""
+    """Shared base for Heater 1 and Heater 2 climate entities."""
 
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.AUTO]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 15.0
@@ -66,12 +66,16 @@ class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
     _ctrl_register: int
     _setpoint_register: int
 
+    # Device register values: 0=off, 1=on (manual), 2=auto
+    _HVAC_MODE_TO_VAL = {HVACMode.OFF: 0, HVACMode.HEAT: 1, HVACMode.AUTO: 2}
+    _VAL_TO_HVAC_MODE = {0: HVACMode.OFF, 1: HVACMode.HEAT, 2: HVACMode.AUTO}
+
     @property
     def hvac_mode(self) -> HVACMode | None:
         val = self._reg(self._ctrl_register)
         if val is None:
             return None
-        return HVACMode.OFF if val == 0 else HVACMode.HEAT
+        return self._VAL_TO_HVAC_MODE.get(val, HVACMode.AUTO)
 
     @property
     def target_temperature(self) -> float | None:
@@ -88,7 +92,7 @@ class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
         return None
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        val = 0 if hvac_mode == HVACMode.OFF else 2
+        val = self._HVAC_MODE_TO_VAL.get(hvac_mode, 2)
         await self.coordinator.async_write_register(self._ctrl_register, [val])
 
     async def async_set_temperature(self, **kwargs) -> None:
@@ -105,7 +109,7 @@ class AquatekHeater1(_AquatekHeaterBase):
 
     _attr_name = "Heater 1"
     _attr_icon = "mdi:radiator"
-    _ctrl_register = REG_GAS_HEATER_CTRL
+    _ctrl_register = REG_HEATER1_CTRL
     _setpoint_register = REG_SPA_SETPOINT
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
@@ -117,7 +121,7 @@ class AquatekHeater2(_AquatekHeaterBase):
 
     _attr_name = "Heater 2"
     _attr_icon = "mdi:radiator"
-    _ctrl_register = REG_HEAT_PUMP_CTRL
+    _ctrl_register = REG_HEATER2_CTRL
     _setpoint_register = REG_HEAT_SETPOINT
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:

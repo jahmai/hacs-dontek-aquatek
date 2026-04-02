@@ -39,24 +39,24 @@ The integration will automatically provision an AWS IoT certificate and connect 
 
 | Platform | Entity |
 |----------|--------|
-| Switch | Pump 1–12 |
-| Switch | Spa |
-| Switch | Filter Pump |
-| Switch | Sanitizer |
-| Switch | Solar |
-| Switch | Light 1 / Light 2 |
-| Number | Pump 1–12 Speed (0–3) |
-| Climate | Heater (setpoint + on/off) |
-| Sensor | Connection Status |
-| Sensor | Device Name |
+| Select | Socket outputs (auto-discovered: Sanitiser, Jet Pump, Pool Light, etc.) |
+| Select | Filter Pump (Off / Speed 1–4 / Auto) |
+| Select | Pool/Spa Mode |
+| Select | Pool Light Type / Colour |
+| Select | Heater 1 & 2 Heating Mode, Pump Type, Sensor Location |
+| Select | Heater 1 Pump Speed |
+| Climate | Heater 1 (Gas Heater) — setpoint + Off/On/Auto |
+| Climate | Heater 2 (Heat Pump) — setpoint + Off/Auto |
+| Switch | Run Till Heated, Boost (Party Mode) |
+| Switch | Heater 1 & 2 Sanitiser, Chilling, Hydrotherapy |
+| Switch | Heater 2 Track/Setback |
+| Number | Heater 1 & 2 Cool-Down Time |
+| Number | Heater 2 Setback Temperature |
+| Sensor | Heater 1 Status, Heater 2 Status |
+| Sensor | Temperature Sensor 1 / 2 / 3 |
+| Sensor | Connection Status, Device Name |
 
-## Known Limitations
-
-The following have not yet been validated against hardware and may need adjustment:
-
-- Heater temperature register scaling (may be whole degrees rather than tenths)
-- Pump speed range (assumes 0–3 levels)
-- Solar register bit mask
+Socket output entities are auto-discovered at startup from the device's socket configuration registers — the set of entities will match however your controller is configured in the app.
 
 ## License
 
