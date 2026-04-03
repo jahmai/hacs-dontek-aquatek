@@ -8,8 +8,10 @@ Covers:
 - Pool Light Type (reg 65352 high byte): all brands from APK
 - Pool Light Colour (reg 65352 low byte): dynamic list for the active light type
 - VF1/VF2 heating mode (Off / Pool & Spa / Pool / Spa)
-- VF1 pump type (Filter / Independent)
-- VF2 pump type+sensor (Filter / Independent+Filter / Independent+HeaterLine)
+- VF1/VF2 pump type (Filter / Independent)
+- VF1/VF2 sensor location (Filter / Heater Line)
+- VF1/VF2 pump speed (Speed 1–4)
+- VF1/VF2 smart heater protocol type (Auto / None / Theralux / Aquark / Oasis)
 """
 
 from __future__ import annotations
@@ -21,10 +23,25 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
+    FILTER_SCHED_COUNT,
+    FILTER_SCHED_SPEED_REGS,
     LIGHT_COLOURS,
     LIGHT_COLOURS_DEFAULT,
     LIGHT_TYPE_NAMES,
     REG_FILTER_PUMP,
+    REG_FILTER_RUNONCE_CTRL,
+    REG_SOCKET_TYPE_BASE,
+    REG_VALVE_TYPE_BASE,
+    REG_VF1_TYPE,
+    REG_VF2_TYPE,
+    SOCKET_COUNT,
+    SOCKET_TYPE_OPTIONS,
+    SOCKET_TYPE_VALUES,
+    VALVE_COUNT,
+    VALVE_TYPE_OPTIONS,
+    VALVE_TYPE_VALUES,
+    VF_TYPE_OPTIONS,
+    VF_TYPE_VALUES,
     REG_POOL_LIGHT_CTRL,
     REG_POOL_SPA_MODE,
     REG_SOCKET_OUTPUT_BASE,
@@ -32,11 +49,15 @@ from .const import (
     REG_VF1_PUMP_TYPE,
     REG_VF1_SENSOR_LOC,
     REG_VF1_PUMP_SPEED,
+    REG_VF1_SMART_HEATER_TYPE,
     REG_VF2_HEAT_MODE,
     REG_VF2_PUMP_TYPE,
     REG_VF2_SENSOR_LOC,
-    SOCKET_TYPE_NAMES,
+    REG_VF2_PUMP_SPEED,
+    REG_VF2_SMART_HEATER_TYPE,
     SOCKET_TYPE_POOL_LIGHT,
+    SMART_HEATER_TYPE_OPTIONS,
+    SMART_HEATER_TYPE_VALUES,
     VF1_PUMP_TYPE_OPTIONS,
     VF1_SENSOR_LOC_OPTIONS,
     VF1_SENSOR_LOC_VALUES,
@@ -74,9 +95,21 @@ async def async_setup_entry(
 ) -> None:
     coordinator: AquatekCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Fixed entities — always present regardless of socket config
-    async_add_entities([
+    fixed: list = [
         AquatekFilterPumpSelect(coordinator),
+        AquatekFilterRunOnceSpeedSelect(coordinator),
+    ]
+    for slot in range(FILTER_SCHED_COUNT):
+        fixed.append(AquatekFilterScheduleSpeedSelect(coordinator, slot))
+    for n in range(1, SOCKET_COUNT + 1):
+        fixed.append(AquatekSocketApplianceSelect(coordinator, n))
+    fixed.append(AquatekVFContactApplianceSelect(coordinator, 1, REG_VF1_TYPE))
+    fixed.append(AquatekVFContactApplianceSelect(coordinator, 2, REG_VF2_TYPE))
+    for n in range(1, VALVE_COUNT + 1):
+        fixed.append(AquatekValveApplianceSelect(coordinator, n))
+
+    # Fixed entities — always present regardless of socket config
+    async_add_entities(fixed + [
         AquatekPoolSpaSelect(coordinator),
         AquatekLightTypeSelect(coordinator),
         AquatekLightColourSelect(coordinator),
@@ -87,6 +120,9 @@ async def async_setup_entry(
         AquatekVF1PumpSpeedSelect(coordinator),
         AquatekVF2PumpTypeSelect(coordinator),
         AquatekVF2SensorLocSelect(coordinator),
+        AquatekVF2PumpSpeedSelect(coordinator),
+        AquatekVF1SmartHeaterTypeSelect(coordinator),
+        AquatekVF2SmartHeaterTypeSelect(coordinator),
     ])
 
     # Socket entities are auto-discovered from device config registers.
@@ -131,7 +167,7 @@ class AquatekSocketSelect(AquatekEntity, SelectEntity):
         super().__init__(coordinator, f"socket_{socket_n}")
         self._socket_n = socket_n
         self._register = REG_SOCKET_OUTPUT_BASE + (socket_n - 1)
-        self._attr_name = SOCKET_TYPE_NAMES.get(type_idx, f"Socket {socket_n}")
+        self._attr_name = f"Socket {socket_n}"
         # Pool light uses explicit on (1); all other types default to auto (2) when turned on
         self._on_value = 1 if type_idx == SOCKET_TYPE_POOL_LIGHT else 2
 
@@ -174,6 +210,63 @@ class AquatekFilterPumpSelect(AquatekEntity, SelectEntity):
         val = _FILTER_VALUES[_FILTER_OPTIONS.index(option)]
         await self.coordinator.async_write_register(REG_FILTER_PUMP, [val])
 
+
+class AquatekFilterRunOnceSpeedSelect(AquatekEntity, SelectEntity):
+    """Speed for the filter pump RunOnce timer (bits 8-15 of reg 57630).
+
+    0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4 stored in the upper byte.
+    Read-modify-write preserves the enable bit (bit 0) in the lower byte.
+    """
+
+    _attr_name = "Filter Run Once Speed"
+    _attr_options = VF1_PUMP_SPEED_OPTIONS
+    _attr_icon = "mdi:speedometer"
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "filter_runonce_speed")
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(REG_FILTER_RUNONCE_CTRL)
+        if val is None:
+            return None
+        speed_idx = (val >> 8) & 0xFF
+        try:
+            return VF1_PUMP_SPEED_OPTIONS[VF1_PUMP_SPEED_VALUES.index(speed_idx)]
+        except ValueError:
+            return VF1_PUMP_SPEED_OPTIONS[0]
+
+    async def async_select_option(self, option: str) -> None:
+        speed_idx = VF1_PUMP_SPEED_VALUES[VF1_PUMP_SPEED_OPTIONS.index(option)]
+        current = self._reg(REG_FILTER_RUNONCE_CTRL) or 0
+        await self.coordinator.async_write_register(REG_FILTER_RUNONCE_CTRL, [(current & 0x00FF) | (speed_idx << 8)])
+
+
+class AquatekFilterScheduleSpeedSelect(AquatekEntity, SelectEntity):
+    """Pump speed for one filter schedule slot (65473–65476, 0=Speed1..3=Speed4)."""
+
+    _attr_options = VF1_PUMP_SPEED_OPTIONS
+    _attr_icon = "mdi:speedometer"
+
+    def __init__(self, coordinator: AquatekCoordinator, slot: int) -> None:
+        slot_num = slot + 1
+        super().__init__(coordinator, f"filter_schedule_{slot_num}_speed")
+        self._attr_name = f"Filter Schedule {slot_num} Speed"
+        self._register = FILTER_SCHED_SPEED_REGS[slot]
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return VF1_PUMP_SPEED_OPTIONS[VF1_PUMP_SPEED_VALUES.index(val)]
+        except ValueError:
+            return VF1_PUMP_SPEED_OPTIONS[0]
+
+    async def async_select_option(self, option: str) -> None:
+        val = VF1_PUMP_SPEED_VALUES[VF1_PUMP_SPEED_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
 
 
 class AquatekPoolSpaSelect(AquatekEntity, SelectEntity):
@@ -380,19 +473,16 @@ class AquatekVF1SensorLocSelect(_AquatekVFSensorLocSelect):
         super().__init__(coordinator, "heater_1_sensor_location")
 
 
-class AquatekVF1PumpSpeedSelect(AquatekEntity, SelectEntity):
-    """VF1 pump speed: Speed 1–4 (reg 65462, Independent pump only)."""
+class _AquatekVFPumpSpeedSelect(AquatekEntity, SelectEntity):
+    """Base for VF pump speed selects (Speed 1–4, Independent pump only)."""
 
-    _attr_name = "Heater 1 Pump Speed"
     _attr_options = VF1_PUMP_SPEED_OPTIONS
     _attr_icon = "mdi:speedometer"
-
-    def __init__(self, coordinator: AquatekCoordinator) -> None:
-        super().__init__(coordinator, "heater_1_pump_speed")
+    _register: int
 
     @property
     def current_option(self) -> str | None:
-        val = self._reg(REG_VF1_PUMP_SPEED)
+        val = self._reg(self._register)
         if val is None:
             return None
         try:
@@ -402,7 +492,17 @@ class AquatekVF1PumpSpeedSelect(AquatekEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         val = VF1_PUMP_SPEED_VALUES[VF1_PUMP_SPEED_OPTIONS.index(option)]
-        await self.coordinator.async_write_register(REG_VF1_PUMP_SPEED, [val])
+        await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekVF1PumpSpeedSelect(_AquatekVFPumpSpeedSelect):
+    """VF1 (Heater 1) pump speed select."""
+
+    _attr_name = "Heater 1 Pump Speed"
+    _register = REG_VF1_PUMP_SPEED
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "heater_1_pump_speed")
 
 
 class AquatekVF2PumpTypeSelect(_AquatekVFPumpTypeSelect):
@@ -423,3 +523,133 @@ class AquatekVF2SensorLocSelect(_AquatekVFSensorLocSelect):
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_2_sensor_location")
+
+
+class AquatekVF2PumpSpeedSelect(_AquatekVFPumpSpeedSelect):
+    """VF2 (Heater 2) pump speed select."""
+
+    _attr_name = "Heater 2 Pump Speed"
+    _register = REG_VF2_PUMP_SPEED
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "heater_2_pump_speed")
+
+
+class _AquatekVFSmartHeaterTypeSelect(AquatekEntity, SelectEntity):
+    """Base for VF smart heater type selects."""
+
+    _attr_options = SMART_HEATER_TYPE_OPTIONS
+    _attr_icon = "mdi:chip"
+    _register: int
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return SMART_HEATER_TYPE_OPTIONS[SMART_HEATER_TYPE_VALUES.index(val)]
+        except ValueError:
+            return "Auto"
+
+    async def async_select_option(self, option: str) -> None:
+        val = SMART_HEATER_TYPE_VALUES[SMART_HEATER_TYPE_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekVF1SmartHeaterTypeSelect(_AquatekVFSmartHeaterTypeSelect):
+    """VF1 (Heater 1) smart heater protocol type."""
+
+    _attr_name = "Heater 1 Smart Heater Type"
+    _register = REG_VF1_SMART_HEATER_TYPE
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "heater_1_smart_heater_type")
+
+
+class AquatekVF2SmartHeaterTypeSelect(_AquatekVFSmartHeaterTypeSelect):
+    """VF2 (Heater 2) smart heater protocol type."""
+
+    _attr_name = "Heater 2 Smart Heater Type"
+    _register = REG_VF2_SMART_HEATER_TYPE
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "heater_2_smart_heater_type")
+
+
+class AquatekSocketApplianceSelect(AquatekEntity, SelectEntity):
+    """Appliance assignment for a socket (reg 65323+(n-1), values 0–14)."""
+
+    _attr_options = SOCKET_TYPE_OPTIONS
+    _attr_icon = "mdi:power-socket"
+
+    def __init__(self, coordinator: AquatekCoordinator, socket_n: int) -> None:
+        super().__init__(coordinator, f"socket_{socket_n}_appliance")
+        self._attr_name = f"Socket {socket_n} Appliance"
+        self._register = REG_SOCKET_TYPE_BASE + (socket_n - 1)
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return SOCKET_TYPE_OPTIONS[SOCKET_TYPE_VALUES.index(val)]
+        except ValueError:
+            return SOCKET_TYPE_OPTIONS[0]
+
+    async def async_select_option(self, option: str) -> None:
+        val = SOCKET_TYPE_VALUES[SOCKET_TYPE_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekVFContactApplianceSelect(AquatekEntity, SelectEntity):
+    """Appliance assignment for a VF contact port (None / Gas Heater / Heat Pump)."""
+
+    _attr_options = VF_TYPE_OPTIONS
+    _attr_icon = "mdi:heat-wave"
+
+    def __init__(self, coordinator: AquatekCoordinator, vf_n: int, register: int) -> None:
+        super().__init__(coordinator, f"vf_{vf_n}_appliance")
+        self._attr_name = f"VF {vf_n} Appliance"
+        self._register = register
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return VF_TYPE_OPTIONS[VF_TYPE_VALUES.index(val)]
+        except ValueError:
+            return VF_TYPE_OPTIONS[0]
+
+    async def async_select_option(self, option: str) -> None:
+        val = VF_TYPE_VALUES[VF_TYPE_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
+
+
+class AquatekValveApplianceSelect(AquatekEntity, SelectEntity):
+    """Appliance assignment for a valve output (reg 65331+(n-1), values 0–7)."""
+
+    _attr_options = VALVE_TYPE_OPTIONS
+    _attr_icon = "mdi:valve"
+
+    def __init__(self, coordinator: AquatekCoordinator, valve_n: int) -> None:
+        super().__init__(coordinator, f"valve_{valve_n}_appliance")
+        self._attr_name = f"Valve {valve_n} Appliance"
+        self._register = REG_VALVE_TYPE_BASE + (valve_n - 1)
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return VALVE_TYPE_OPTIONS[VALVE_TYPE_VALUES.index(val)]
+        except ValueError:
+            return VALVE_TYPE_OPTIONS[0]
+
+    async def async_select_option(self, option: str) -> None:
+        val = VALVE_TYPE_VALUES[VALVE_TYPE_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])

@@ -269,12 +269,29 @@ class AquatekMQTTClient:
                 next_delay = min(delay * 2, RECONNECT_MAX)
                 self._schedule_reconnect(next_delay)
 
-    async def _watchdog_loop(self) -> None:
-        """Periodically check that status messages are still arriving.
+    async def _poll_state(self) -> None:
+        """Send a full-state-dump request to the device."""
+        if not self._connection or self._state == ConnectionState.DISCONNECTED:
+            return
+        try:
+            from awscrt import mqtt  # noqa: PLC0415
+            state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
+            pub_future, _ = self._connection.publish(
+                topic=self._topic_cmd,
+                payload=state_request,
+                qos=mqtt.QoS.AT_MOST_ONCE,
+            )
+            await asyncio.wrap_future(pub_future)
+            _LOGGER.debug("Sent periodic state poll")
+        except Exception:
+            _LOGGER.debug("Periodic state poll failed")
 
-        If no message is received within WATCHDOG_TIMEOUT seconds, treat the
-        device as offline and trigger reconnect. Mirrors the app's 180-second
-        timeout logic in b3/q.java case 0.
+    async def _watchdog_loop(self) -> None:
+        """Check the connection is still live; reconnect if the device goes silent.
+
+        No periodic polling — state is refreshed on connect, after each write,
+        and on manual button press. This minimises unnecessary traffic to
+        Dontek's AWS IoT backend.
         """
         import time  # noqa: PLC0415
         while True:

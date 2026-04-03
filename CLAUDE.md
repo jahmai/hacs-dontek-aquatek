@@ -259,18 +259,26 @@ Entities must be **auto-discovered** from the socket config registers on connect
 
 | Platform | Entity | Register(s) |
 |----------|--------|-------------|
-| `select` | One per configured socket (auto-discovered) | 65336+(n-1); type from 65323+(n-1) |
+| `select` | Socket 1–5 output (auto-discovered) | 65336+(n-1) |
+| `select` | Socket 1–5 Appliance | 65323+(n-1) (0–14, see socket type table) |
+| `select` | Valve 1–4 Appliance | 65331+(n-1) (0–7, see valve type table) |
+| `select` | VF 1 Appliance | 65335 (0=None, 1=Gas Heater, 2=Heat Pump) |
+| `select` | VF 2 Appliance | 57510 (same values) |
 | `select` | Filter Pump | 65485 (0/257/513/769/1025/65535) |
+| `select` | Filter Run Once Speed | 57630 bits 8-15 (0–3 = Speed 1–4) |
+| `select` | Filter Schedule 1–4 Speed | 65473+(n-1) (0–3 = Speed 1–4) |
 | `select` | Pool/Spa Mode | 65313 (0=Pool, 1=Spa) |
-| `select` | Light Type | 65352 upper byte |
-| `select` | Light Colour | 65352 lower byte (options vary per brand) |
+| `select` | Pool Light Type | 65352 upper byte |
+| `select` | Pool Light Colour | 65352 lower byte (options vary per brand) |
 | `select` | Heater 1 Heating Mode | 65450 (0=Off, 2=Pool & Spa, 3=Pool, 4=Spa) |
 | `select` | Heater 1 Pump Type | 65499 (0=Filter, non-zero=Independent) |
 | `select` | Heater 1 Sensor Location | 65499 (1=Filter, 2=Heater Line) |
 | `select` | Heater 1 Pump Speed | 65462 (0–3 = Speed 1–4) |
+| `select` | Heater 1 Smart Heater Type | 57582 (0=Auto, 1=None, 2=Theralux, 3=Aquark, 4=Oasis) |
 | `select` | Heater 2 Heating Mode | 57566 (same values) |
 | `select` | Heater 2 Pump Type | 57574 (0=Filter, non-zero=Independent) |
 | `select` | Heater 2 Sensor Location | 57574 (1=Filter, 2=Heater Line) |
+| `select` | Heater 2 Smart Heater Type | 57583 (same values) |
 | `climate` | Heater 1 | ctrl=65348, setpoint=65441 |
 | `climate` | Heater 2 | ctrl=57517, setpoint=57575 |
 | `switch` | Run Till Heated | 65500 |
@@ -285,11 +293,14 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `number` | Heater 1 Cool-Down Time | 65451 (minutes, 0–60) |
 | `number` | Heater 2 Cool-Down Time | 57568 (minutes, 0–60) |
 | `number` | Heater 2 Setback Temperature | 57579 (0 to −15°C, 0.5°C steps) |
+| `number` | Filter Duty Cycle | 57681 (0–100%, 5% steps) |
 | `sensor` | Heater 1 Status | 81 |
 | `sensor` | Heater 2 Status | 184 |
+| `sensor` | Filter Pump Status | 92 (state in high byte, speed in low byte) |
 | `sensor` | Temperature Sensor 1/2/3 | 55+(n-1); type from 65314+(n-1) |
 | `sensor` | Connection Status | — |
 | `sensor` | Device Name | 65488–65495 |
+| `button` | Refresh | Sends full state dump request |
 
 ### Config Flow
 

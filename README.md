@@ -39,12 +39,17 @@ The integration will automatically provision an AWS IoT certificate and connect 
 
 | Platform | Entity |
 |----------|--------|
-| Select | Socket outputs (auto-discovered: Sanitiser, Jet Pump, Pool Light, etc.) |
+| Select | Socket 1–5 outputs (auto-discovered, Off/On/Auto) |
+| Select | Socket 1–5 Appliance assignment |
+| Select | Valve 1–4 Appliance assignment |
+| Select | VF 1 & 2 Appliance assignment (None / Gas Heater / Heat Pump) |
 | Select | Filter Pump (Off / Speed 1–4 / Auto) |
+| Select | Filter Run Once Speed |
+| Select | Filter Schedule 1–4 Speed |
 | Select | Pool/Spa Mode |
 | Select | Pool Light Type / Colour |
-| Select | Heater 1 & 2 Heating Mode, Pump Type, Sensor Location |
-| Select | Heater 1 Pump Speed |
+| Select | Heater 1 & 2 Heating Mode, Pump Type, Sensor Location, Pump Speed |
+| Select | Heater 1 & 2 Smart Heater Type |
 | Climate | Heater 1 (Gas Heater) — setpoint + Off/On/Auto |
 | Climate | Heater 2 (Heat Pump) — setpoint + Off/Auto |
 | Switch | Run Till Heated, Boost (Party Mode) |
@@ -52,9 +57,11 @@ The integration will automatically provision an AWS IoT certificate and connect 
 | Switch | Heater 2 Track/Setback |
 | Number | Heater 1 & 2 Cool-Down Time |
 | Number | Heater 2 Setback Temperature |
-| Sensor | Heater 1 Status, Heater 2 Status |
+| Number | Filter Duty Cycle (0–100%) |
+| Sensor | Heater 1 Status, Heater 2 Status, Filter Pump Status |
 | Sensor | Temperature Sensor 1 / 2 / 3 |
 | Sensor | Connection Status, Device Name |
+| Button | Refresh (request immediate state update) |
 
 Socket output entities are auto-discovered at startup from the device's socket configuration registers — the set of entities will match however your controller is configured in the app.
 

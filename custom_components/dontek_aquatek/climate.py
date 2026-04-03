@@ -1,11 +1,18 @@
 """Climate entities for the Dontek Aquatek heaters.
 
-Two independent heaters, each with their own setpoint register:
-  - Heater 1: on/off via 65348, setpoint via 65441 (labeled "Spa" in app)
-  - Heater 2: on/off via 57517, setpoint via 57575 (labeled "Pool" in app)
+Each heater has independent Pool and Spa setpoint registers:
+  - Heater 1: ctrl=65348, pool setpoint=65447, spa setpoint=65441
+  - Heater 2: ctrl=57517, pool setpoint=57575, spa setpoint=57576
+
+The active setpoint shown/written by the climate entity depends on the heater's
+heating mode (65450 for H1, 57566 for H2):
+  - Pool only (3)  → pool setpoint
+  - Spa only  (4)  → spa setpoint
+  - Pool & Spa (2) → show whichever matches the current controller Pool/Spa mode
+                     (65313=0 → pool, 65313=1 → spa); write both on set_temperature
+  - Off (0)        → show pool setpoint; write both on set_temperature
 
 Setpoints are encoded as °C × 2 (e.g. 32°C is stored as 64).
-The setpoints are independent of Pool/Spa mode — they are per-heater controls.
 
 Current water temperature is read from whichever physical sensor (1-3) is
 configured as Pool type (sensor type config regs 65314-65316; type=1 means Pool).
@@ -25,20 +32,33 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
+    REG_H1_POOL_SETPOINT,
+    REG_H1_SPA_SETPOINT,
+    REG_H2_POOL_SETPOINT,
+    REG_H2_SPA_SETPOINT,
     REG_HEATER1_CTRL,
     REG_HEATER2_CTRL,
-    REG_HEAT_SETPOINT,
+    REG_POOL_SPA_MODE,
     REG_SENSOR_READING_BASE,
     REG_SENSOR_TYPE_BASE,
-    REG_SPA_SETPOINT,
+    REG_VF1_HEAT_MODE,
+    REG_VF2_HEAT_MODE,
     SENSOR_COUNT,
     SENSOR_TYPE_POOL,
 )
 from .coordinator import AquatekCoordinator
 from .entity_base import AquatekEntity
 
-# Setpoint is stored as °C × 2 (confirmed on hardware: 32°C = 64, 33°C = 66)
 _TEMP_SCALE = 2.0
+
+# Heating mode values (same for both heaters)
+_HEAT_MODE_POOL_AND_SPA = 2
+_HEAT_MODE_POOL_ONLY = 3
+_HEAT_MODE_SPA_ONLY = 4
+
+# Raw register value used by the firmware to mean "Off" for a setpoint circuit.
+# Confirmed: device factory-resets H1 Pool setpoint to 255; app shows "Off" at 127.5°C.
+_SETPOINT_OFF = 255
 
 
 async def async_setup_entry(
@@ -59,16 +79,39 @@ class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.AUTO]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_min_temp = 15.0
-    _attr_max_temp = 40.0
+    _attr_min_temp = 10.0
+    _attr_max_temp = 45.0
     _attr_target_temperature_step = 0.5
 
     _ctrl_register: int
-    _setpoint_register: int
+    _heat_mode_register: int
+    _pool_setpoint_register: int
+    _spa_setpoint_register: int
 
-    # Device register values: 0=off, 1=on (manual), 2=auto
     _HVAC_MODE_TO_VAL = {HVACMode.OFF: 0, HVACMode.HEAT: 1, HVACMode.AUTO: 2}
     _VAL_TO_HVAC_MODE = {0: HVACMode.OFF, 1: HVACMode.HEAT, 2: HVACMode.AUTO}
+
+    @property
+    def _heat_mode(self) -> int | None:
+        return self._reg(self._heat_mode_register)
+
+    @property
+    def _active_setpoint_register(self) -> int:
+        """Return the setpoint register appropriate for the current heating mode."""
+        mode = self._heat_mode
+        if mode == _HEAT_MODE_SPA_ONLY:
+            return self._spa_setpoint_register
+        if mode == _HEAT_MODE_POOL_AND_SPA:
+            controller_in_spa = self._reg(REG_POOL_SPA_MODE) == 1
+            if controller_in_spa:
+                # Show pool as fallback if spa circuit is Off
+                if self._reg(self._spa_setpoint_register) != _SETPOINT_OFF:
+                    return self._spa_setpoint_register
+            else:
+                # Show spa as fallback if pool circuit is Off
+                if self._reg(self._pool_setpoint_register) == _SETPOINT_OFF:
+                    return self._spa_setpoint_register
+        return self._pool_setpoint_register
 
     @property
     def hvac_mode(self) -> HVACMode | None:
@@ -79,7 +122,7 @@ class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        val = self._reg(self._setpoint_register)
+        val = self._reg(self._active_setpoint_register)
         return None if val is None else val / _TEMP_SCALE
 
     @property
@@ -99,30 +142,43 @@ class _AquatekHeaterBase(AquatekEntity, ClimateEntity):
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is None:
             return
-        await self.coordinator.async_write_register(
-            self._setpoint_register, [int(temp * _TEMP_SCALE)]
-        )
+        raw = int(temp * _TEMP_SCALE)
+        mode = self._heat_mode
+        if mode == _HEAT_MODE_POOL_ONLY:
+            await self.coordinator.async_write_register(self._pool_setpoint_register, [raw])
+        elif mode == _HEAT_MODE_SPA_ONLY:
+            await self.coordinator.async_write_register(self._spa_setpoint_register, [raw])
+        else:
+            # Pool & Spa (2), Off (0), or unknown — write each circuit only if not Off (255)
+            if self._reg(self._pool_setpoint_register) != _SETPOINT_OFF:
+                await self.coordinator.async_write_register(self._pool_setpoint_register, [raw])
+            if self._reg(self._spa_setpoint_register) != _SETPOINT_OFF:
+                await self.coordinator.async_write_register(self._spa_setpoint_register, [raw])
 
 
 class AquatekHeater1(_AquatekHeaterBase):
-    """Heater 1 (VF1) — on/off via socket output (65348), setpoint at 65441."""
+    """Heater 1 (VF1) — ctrl=65348, pool setpoint=65447, spa setpoint=65441."""
 
     _attr_name = "Heater 1"
     _attr_icon = "mdi:radiator"
     _ctrl_register = REG_HEATER1_CTRL
-    _setpoint_register = REG_SPA_SETPOINT
+    _heat_mode_register = REG_VF1_HEAT_MODE
+    _pool_setpoint_register = REG_H1_POOL_SETPOINT
+    _spa_setpoint_register = REG_H1_SPA_SETPOINT
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_1")
 
 
 class AquatekHeater2(_AquatekHeaterBase):
-    """Heater 2 (VF2) — on/off via serial (57517), setpoint at 57575."""
+    """Heater 2 (VF2) — ctrl=57517, pool setpoint=57575, spa setpoint=57576."""
 
     _attr_name = "Heater 2"
     _attr_icon = "mdi:radiator"
     _ctrl_register = REG_HEATER2_CTRL
-    _setpoint_register = REG_HEAT_SETPOINT
+    _heat_mode_register = REG_VF2_HEAT_MODE
+    _pool_setpoint_register = REG_H2_POOL_SETPOINT
+    _spa_setpoint_register = REG_H2_SPA_SETPOINT
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_2")

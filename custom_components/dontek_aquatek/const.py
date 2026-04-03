@@ -84,6 +84,14 @@ SOCKET_TYPE_NAMES: dict[int, str] = {
     SOCKET_TYPE_UV_SANITISER: "UV Sanitiser",
 }
 
+# Full ordered option list for socket appliance assignment select (indices 0–14)
+SOCKET_TYPE_OPTIONS = [
+    "None", "Sanitiser", "Filter Pump", "Cleaning Pump", "Blower",
+    "Pool Light", "Spa Light", "Garden Light", "Water Feature",
+    "Solar", "Other", "Always On", "Jet Pump", "Heating Pump", "UV Sanitiser",
+]
+SOCKET_TYPE_VALUES = list(range(len(SOCKET_TYPE_OPTIONS)))
+
 # ---------------------------------------------------------------------------
 # Pool / Spa mode (write to switch between pool and spa mode)
 # 0 = Pool, 1 = Spa (confirmed on hardware)
@@ -99,6 +107,22 @@ VF_TYPE_NONE = 0
 VF_TYPE_GAS_HEATER = 1
 VF_TYPE_HEAT_PUMP = 2
 
+VF_TYPE_OPTIONS = ["None", "Gas Heater", "Heat Pump"]
+VF_TYPE_VALUES  = [VF_TYPE_NONE, VF_TYPE_GAS_HEATER, VF_TYPE_HEAT_PUMP]
+
+# ---------------------------------------------------------------------------
+# Valve type config — 4 valve outputs (confirmed 2026-04-03)
+# Registers 65331–65334 (valve n = REG_VALVE_TYPE_BASE + (n-1))
+# Values 0–7 match the app option order below.
+REG_VALVE_TYPE_BASE = 65331
+VALVE_COUNT = 4
+
+VALVE_TYPE_OPTIONS = [
+    "None", "Pool Spa", "Solar", "Water Feature",
+    "Infloor", "Feature From Solar", "Other", "Heating",
+]
+VALVE_TYPE_VALUES = list(range(len(VALVE_TYPE_OPTIONS)))
+
 # ---------------------------------------------------------------------------
 # Filter pump — dedicated serial port (not a socket, not a VF port)
 # Values: 0=off, 257=speed1, 513=speed2, 769=speed3, 1025=speed4, 65535=auto
@@ -112,8 +136,10 @@ REG_FILTER_PUMP = 65485
 # Heater 2: connected via serial cable; controlled in the 57xxx register range.
 REG_HEATER1_CTRL = 65348      # Heater 1 on/off/auto: 0=off, 1=on, 2=auto (confirmed)
 REG_HEATER2_CTRL = 57517      # Heater 2 on/off/auto: 0=off, 2=auto (confirmed)
-REG_HEAT_SETPOINT = 57575     # Heater 2 setpoint (Pool): value = °C × 2 (confirmed)
-REG_SPA_SETPOINT = 65441      # Heater 1 setpoint (Spa): value = °C × 2 (confirmed)
+REG_H1_POOL_SETPOINT = 65447  # Heater 1 Pool setpoint: value = °C × 2 (confirmed via APK)
+REG_H1_SPA_SETPOINT  = 65441  # Heater 1 Spa setpoint:  value = °C × 2 (confirmed via APK)
+REG_H2_POOL_SETPOINT = 57575  # Heater 2 Pool setpoint: value = °C × 2 (confirmed on hardware)
+REG_H2_SPA_SETPOINT  = 57576  # Heater 2 Spa setpoint:  value = °C × 2 (confirmed via APK)
 REG_BOOST_MODE = 57577           # Heater 2 boost/party mode: 0=off, 1=on (confirmed)
 REG_RUN_TILL_HEATED = 65500      # Heater 1 run till heated: 0=off, 1=on (confirmed)
 
@@ -141,10 +167,16 @@ REG_VF2_COOLDOWN     = 57568     # VF2 cool down time in minutes
 REG_VF2_SANITISER    = 57570     # VF2 sanitiser: 0=off, 1=on
 REG_VF2_PUMP_TYPE    = 57574     # VF2 pump type+sensor combined: 0=Filter, 1=Indep/Filter, 2=Indep/HeaterLine
 REG_VF2_SENSOR_LOC   = 57574     # same register — sensor location encoded as 1=Filter, 2=HeaterLine
-REG_VF2_CHILLING     = 57569     # VF2 chilling: 0=off, 1=on (Heater 2 type only)
-REG_VF2_HYDRO        = 57587     # VF2 hydrotherapy: 0=off, 1=on
-REG_VF2_SETBACK      = 57578     # VF2 setback: 0=off, 1=on (Secondary Heating only)
-REG_VF2_SETBACK_TEMP = 57579     # VF2 setback temperature offset: stored as positive 0.5°C steps (e.g. 6=−3°C)
+REG_VF2_CHILLING          = 57569     # VF2 chilling: 0=off, 1=on (Heater 2 type only)
+REG_VF2_HYDRO             = 57587     # VF2 hydrotherapy: 0=off, 1=on
+REG_VF2_SETBACK           = 57578     # VF2 setback: 0=off, 1=on (Secondary Heating only)
+REG_VF2_SETBACK_TEMP      = 57579     # VF2 setback temperature offset: stored as positive 0.5°C steps (e.g. 6=−3°C)
+REG_VF2_PUMP_SPEED        = 57571     # VF2 pump speed: 0=Speed1, 1=Speed2, 2=Speed3, 3=Speed4
+
+# Smart heater type — controls which serial protocol the Dontek uses to communicate with each heater.
+# 0=Auto (auto-detect), 1=None (relay-only), 2=Theralux, 3=Aquark, 4=Oasis
+REG_VF1_SMART_HEATER_TYPE = 57582
+REG_VF2_SMART_HEATER_TYPE = 57583
 
 VF_HEAT_MODE_OPTIONS = ["Off", "Pool & Spa", "Pool", "Spa"]
 VF_HEAT_MODE_VALUES  = [0, 2, 3, 4]
@@ -163,6 +195,9 @@ VF2_PUMP_TYPE_VALUES  = [0, 1]   # 0=Filter, non-zero=Independent
 
 VF2_SENSOR_LOC_OPTIONS = ["Filter", "Heater Line"]
 VF2_SENSOR_LOC_VALUES  = [1, 2]  # 1=Filter sensor, 2=Heater Line sensor
+
+SMART_HEATER_TYPE_OPTIONS = ["Auto", "None", "Theralux", "Aquark", "Oasis"]
+SMART_HEATER_TYPE_VALUES  = [0, 1, 2, 3, 4]
 # ---------------------------------------------------------------------------
 # Temperature sensors (3 physical sensors, each configurable to a role)
 # Type config: 65314=Sensor1 type, 65315=Sensor2 type, 65316=Sensor3 type
@@ -348,6 +383,65 @@ FILTER_PUMP_STATUS_NAMES: dict[int, str] = {
     18: "Prime Off",
     19: "Run On",
 }
+
+# ---------------------------------------------------------------------------
+# Socket timer registers (socket index n is 0-based; socket_n in integration is 1-based)
+# Register = BASE + (socket_n - 1)
+#
+# Schedule enable (65362+n): bit-field; bit 0 = Schedule 1 enable, bit 1 = Schedule 2 enable
+#   Requires read-modify-write to toggle a single schedule without affecting the other.
+# Schedule start/end (65375+n, 65388+n, 65401+n, 65414+n): encoded as (hours << 8) | minutes
+#   65535 (0xFFFF) = unset / "--:--" in app
+# RunOnce enable (57613+n): 0=off, 1=on
+# RunOnce start/end (57633+n, 57653+n): duration delta — device uses (end - start) as duration.
+#   Writing start=0x0000 and end=(h<<8)|m encodes duration cleanly.
+REG_SOCKET_SCHEDULE_ENABLE_BASE = 65362   # bit 0=sched1, bit 1=sched2
+REG_SOCKET_SCHED1_START_BASE    = 65375   # Schedule 1 start: (hh<<8)|mm
+REG_SOCKET_SCHED1_END_BASE      = 65388   # Schedule 1 end:   (hh<<8)|mm
+REG_SOCKET_SCHED2_START_BASE    = 65401   # Schedule 2 start: (hh<<8)|mm
+REG_SOCKET_SCHED2_END_BASE      = 65414   # Schedule 2 end:   (hh<<8)|mm
+REG_SOCKET_RUNONCE_ENABLE_BASE  = 57613   # RunOnce enable: 0=off, 1=on
+REG_SOCKET_RUNONCE_START_BASE   = 57633   # RunOnce start time
+REG_SOCKET_RUNONCE_END_BASE     = 57653   # RunOnce end time
+
+# Sentinel value for unset time registers (displayed as "--:--" in app)
+TIME_REG_UNSET = 0xFFFF
+
+# ---------------------------------------------------------------------------
+# Filter pump timers — 4 schedule slots (confirmed from APK a0.java)
+#
+# Enable bit field (65318): bit i = slot i enable (i = 0..3)
+# Start/end times encoded as (hours << 8) | minutes
+# The start/end registers are NOT contiguous — confirmed from APK W(i, bool) function.
+REG_FILTER_SCHEDULE_ENABLE = 65318
+FILTER_SCHED_START_REGS    = (65319, 65321, 65469, 65471)   # start times, slots 0-3
+FILTER_SCHED_END_REGS      = (65320, 65322, 65470, 65472)   # end times,   slots 0-3
+FILTER_SCHED_SPEED_REGS    = (65473, 65474, 65475, 65476)   # pump speed, slots 0-3 (0=Speed1..3=Speed4) ✓ confirmed 2026-04-03
+FILTER_SCHED_COUNT         = 4
+
+# Filter pump RunOnce — confirmed from APK a0.java
+# 57630 is packed: bits 0-3 = enable (1=on), bits 8-15 = VF pump speed index.
+# Read-modify-write required so writing enable doesn't stomp the speed.
+REG_FILTER_RUNONCE_CTRL    = 57630   # packed enable + speed (bit 0 = enable)
+REG_FILTER_RUNONCE_START   = 57650   # RunOnce start time
+REG_FILTER_RUNONCE_END     = 57670   # RunOnce end time
+
+# Filter pump duty cycle — confirmed 2026-04-03 (reg 57681 val=50 when app set to 50%)
+# Direct percentage 0-100; app UI steps in 5% increments (may be UX only).
+REG_FILTER_DUTY_CYCLE      = 57681   # 0-100%
+
+# ---------------------------------------------------------------------------
+# Heater schedule timers — one schedule slot per heater (confirmed from state dump)
+#
+# Enable stored as bit 0 of the enable register (read-modify-write).
+# Start/end encoded as (hours << 8) | minutes.
+REG_H1_SCHEDULE_ENABLE = 65517   # bit 0 = schedule enable
+REG_H1_SCHEDULE_START  = 65518   # (hh<<8)|mm
+REG_H1_SCHEDULE_END    = 65519   # (hh<<8)|mm
+
+REG_H2_SCHEDULE_ENABLE = 57606   # bit 0 = schedule enable
+REG_H2_SCHEDULE_START  = 57607   # (hh<<8)|mm
+REG_H2_SCHEDULE_END    = 57608   # (hh<<8)|mm
 
 # ---------------------------------------------------------------------------
 # Device info
