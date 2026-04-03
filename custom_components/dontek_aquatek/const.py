@@ -431,17 +431,27 @@ REG_FILTER_RUNONCE_END     = 57670   # RunOnce end time
 REG_FILTER_DUTY_CYCLE      = 57681   # 0-100%
 
 # ---------------------------------------------------------------------------
-# Heater schedule timers — one schedule slot per heater (confirmed from state dump)
-#
-# Enable stored as bit 0 of the enable register (read-modify-write).
+# Heater schedule timers — start/end confirmed from live state dump 2026-04-03.
 # Start/end encoded as (hours << 8) | minutes.
-REG_H1_SCHEDULE_ENABLE = 65517   # bit 0 = schedule enable
-REG_H1_SCHEDULE_START  = 65518   # (hh<<8)|mm
-REG_H1_SCHEDULE_END    = 65519   # (hh<<8)|mm
+REG_H1_SCHEDULE_ENABLE  = 65374   # bit field: bit 0=slot1, bit 1=slot2 ✓ confirmed 2026-04-03
+REG_H1_SCHEDULE_START   = 65466   # (hh<<8)|mm — H1 schedule in 65xxx range ✓ confirmed 2026-04-03
+REG_H1_SCHEDULE_END     = 65467   # (hh<<8)|mm ✓ confirmed 2026-04-03
+REG_H1_SCHEDULE2_START  = 65413   # (hh<<8)|mm ✓ confirmed 2026-04-03 via live change
+REG_H1_SCHEDULE2_END    = 65426   # (hh<<8)|mm ✓ confirmed 2026-04-03 via live change
 
-REG_H2_SCHEDULE_ENABLE = 57606   # bit 0 = schedule enable
-REG_H2_SCHEDULE_START  = 57607   # (hh<<8)|mm
-REG_H2_SCHEDULE_END    = 57608   # (hh<<8)|mm
+REG_H2_SCHEDULE_ENABLE  = 57531   # bit field: bit 0=slot1, bit 1=slot2 ✓ confirmed 2026-04-03
+REG_H2_SCHEDULE_START   = 57538   # (hh<<8)|mm — H2 schedule in 57xxx range ✓ confirmed 2026-04-03
+REG_H2_SCHEDULE_END     = 57545   # (hh<<8)|mm ✓ confirmed 2026-04-03
+REG_H2_SCHEDULE2_START  = 57552   # (hh<<8)|mm ✓ confirmed 2026-04-03 via live change
+REG_H2_SCHEDULE2_END    = 57559   # (hh<<8)|mm ✓ confirmed 2026-04-03 via live change
+
+# Heater RunOnce — confirmed 2026-04-03 via toggle test
+REG_H1_RUNONCE_ENABLE   = 57625   # 0=off, 1=on ✓
+REG_H1_RUNONCE_START    = 57645   # (hh<<8)|mm — auto-set to current time on enable ✓
+REG_H1_RUNONCE_END      = 57665   # (hh<<8)|mm — end time (sets duration) ✓
+REG_H2_RUNONCE_ENABLE   = 57626   # 0=off, 1=on ✓
+REG_H2_RUNONCE_START    = 57646   # (hh<<8)|mm — auto-set to current time on enable ✓
+REG_H2_RUNONCE_END      = 57666   # (hh<<8)|mm — end time (sets duration) ✓
 
 # ---------------------------------------------------------------------------
 # Device info

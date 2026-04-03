@@ -210,7 +210,7 @@ class _AquatekHeaterStatusSensor(AquatekEntity, SensorEntity):
 
 
 class AquatekHeater1StatusSensor(_AquatekHeaterStatusSensor):
-    """Heater 1 status (register 185)."""
+    """Heater 1 status (register 81)."""
 
     _attr_name = "Heater 1 Status"
     _attr_icon = "mdi:fire"

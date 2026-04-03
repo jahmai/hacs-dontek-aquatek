@@ -26,8 +26,12 @@ from .const import (
     FILTER_SCHED_START_REGS,
     REG_H1_SCHEDULE_END,
     REG_H1_SCHEDULE_START,
+    REG_H1_SCHEDULE2_END,
+    REG_H1_SCHEDULE2_START,
     REG_H2_SCHEDULE_END,
     REG_H2_SCHEDULE_START,
+    REG_H2_SCHEDULE2_END,
+    REG_H2_SCHEDULE2_START,
     REG_SOCKET_SCHED1_END_BASE,
     REG_SOCKET_SCHED1_START_BASE,
     REG_SOCKET_SCHED2_END_BASE,
@@ -83,10 +87,14 @@ async def async_setup_entry(
 
     # Heater schedule times
     entities += [
-        AquatekScheduleTime(coordinator, "heater_1_schedule_start", "Heater 1 Schedule Start", REG_H1_SCHEDULE_START),
-        AquatekScheduleTime(coordinator, "heater_1_schedule_end",   "Heater 1 Schedule End",   REG_H1_SCHEDULE_END),
-        AquatekScheduleTime(coordinator, "heater_2_schedule_start", "Heater 2 Schedule Start", REG_H2_SCHEDULE_START),
-        AquatekScheduleTime(coordinator, "heater_2_schedule_end",   "Heater 2 Schedule End",   REG_H2_SCHEDULE_END),
+        AquatekScheduleTime(coordinator, "heater_1_schedule_start",  "Heater 1 Schedule 1 Start", REG_H1_SCHEDULE_START),
+        AquatekScheduleTime(coordinator, "heater_1_schedule_end",    "Heater 1 Schedule 1 End",   REG_H1_SCHEDULE_END),
+        AquatekScheduleTime(coordinator, "heater_1_schedule2_start", "Heater 1 Schedule 2 Start", REG_H1_SCHEDULE2_START),
+        AquatekScheduleTime(coordinator, "heater_1_schedule2_end",   "Heater 1 Schedule 2 End",   REG_H1_SCHEDULE2_END),
+        AquatekScheduleTime(coordinator, "heater_2_schedule_start",  "Heater 2 Schedule 1 Start", REG_H2_SCHEDULE_START),
+        AquatekScheduleTime(coordinator, "heater_2_schedule_end",    "Heater 2 Schedule 1 End",   REG_H2_SCHEDULE_END),
+        AquatekScheduleTime(coordinator, "heater_2_schedule2_start", "Heater 2 Schedule 2 Start", REG_H2_SCHEDULE2_START),
+        AquatekScheduleTime(coordinator, "heater_2_schedule2_end",   "Heater 2 Schedule 2 End",   REG_H2_SCHEDULE2_END),
     ]
 
     async_add_entities(entities)

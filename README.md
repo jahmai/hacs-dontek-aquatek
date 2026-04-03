@@ -53,9 +53,19 @@ The integration will automatically provision an AWS IoT certificate and connect 
 | Climate | Heater 1 (Gas Heater) — setpoint + Off/On/Auto |
 | Climate | Heater 2 (Heat Pump) — setpoint + Off/Auto |
 | Switch | Run Till Heated, Boost (Party Mode) |
+| Switch | Heater 1 & 2 Run Once |
+| Switch | Heater 1 & 2 Schedule 1/2 Enable |
+| Switch | Socket 1–5 Schedule 1/2 Enable, Run Once |
+| Switch | Filter Schedule 1–4 Enable, Run Once |
 | Switch | Heater 1 & 2 Sanitiser, Chilling, Hydrotherapy |
 | Switch | Heater 2 Track/Setback |
+| Time | Heater 1 & 2 Schedule 1/2 Start/End |
+| Time | Socket 1–5 Schedule 1/2 Start/End |
+| Time | Filter Schedule 1–4 Start/End |
 | Number | Heater 1 & 2 Cool-Down Time |
+| Number | Heater 1 & 2 Run Once Duration |
+| Number | Socket 1–5 Run Once Duration |
+| Number | Filter Run Once Duration |
 | Number | Heater 2 Setback Temperature |
 | Number | Filter Duty Cycle (0–100%) |
 | Sensor | Heater 1 Status, Heater 2 Status, Filter Pump Status |

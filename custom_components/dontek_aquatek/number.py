@@ -1,24 +1,24 @@
 """Number entities for the Dontek Aquatek integration.
 
 Covers:
-- Heater 1 Pool setpoint in °C (65447): value = °C × 2
-- Heater 1 Spa setpoint in °C (65441): value = °C × 2
-- Heater 2 Pool setpoint in °C (57575): value = °C × 2
-- Heater 2 Spa setpoint in °C (57576): value = °C × 2
-- VF1 cool down time in minutes (65451)
-- VF2 cool down time in minutes (57568)
-- VF2 setback temperature offset in °C (57579): 0 to -15 in 0.5°C steps
+- Heater 1/2 Pool/Spa setpoints in °C
+- VF1/VF2 cool down time in minutes
+- VF2 setback temperature offset in °C
 - Per-socket Run Once duration in minutes (all 5 sockets, always created)
-- Filter pump Run Once duration in minutes (derived from 57650/57670 delta)
+- Filter pump Run Once duration in minutes
+- Heater 1/2 Run Once duration in minutes
 """
 
 from __future__ import annotations
+
+from datetime import timedelta
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -26,8 +26,12 @@ from .const import (
     REG_FILTER_RUNONCE_END,
     REG_FILTER_RUNONCE_START,
     REG_H1_POOL_SETPOINT,
+    REG_H1_RUNONCE_END,
+    REG_H1_RUNONCE_START,
     REG_H1_SPA_SETPOINT,
     REG_H2_POOL_SETPOINT,
+    REG_H2_RUNONCE_END,
+    REG_H2_RUNONCE_START,
     REG_H2_SPA_SETPOINT,
     REG_SOCKET_RUNONCE_END_BASE,
     REG_SOCKET_RUNONCE_START_BASE,
@@ -56,12 +60,39 @@ async def async_setup_entry(
         AquatekCoolDownNumber(coordinator, "heater_1_cooldown", "Heater 1 Cool Down", REG_VF1_COOLDOWN),
         AquatekCoolDownNumber(coordinator, "heater_2_cooldown", "Heater 2 Cool Down", REG_VF2_COOLDOWN),
         AquatekSetbackTempNumber(coordinator),
-        AquatekFilterRunOnceDuration(coordinator),
     ]
 
     # Per-socket RunOnce duration — all 5 sockets, always created
     for n in range(1, SOCKET_COUNT + 1):
-        entities.append(AquatekSocketRunOnceDuration(coordinator, n))
+        entities.append(AquatekRunOnceDuration(
+            coordinator,
+            unique_key=f"socket_{n}_runonce_duration",
+            name=f"Socket {n} Run Once Duration",
+            start_reg=REG_SOCKET_RUNONCE_START_BASE + (n - 1),
+            end_reg=REG_SOCKET_RUNONCE_END_BASE + (n - 1),
+        ))
+
+    entities.append(AquatekRunOnceDuration(
+        coordinator,
+        unique_key="filter_runonce_duration",
+        name="Filter Run Once Duration",
+        start_reg=REG_FILTER_RUNONCE_START,
+        end_reg=REG_FILTER_RUNONCE_END,
+    ))
+    entities.append(AquatekRunOnceDuration(
+        coordinator,
+        unique_key="heater_1_runonce_duration",
+        name="Heater 1 Run Once Duration",
+        start_reg=REG_H1_RUNONCE_START,
+        end_reg=REG_H1_RUNONCE_END,
+    ))
+    entities.append(AquatekRunOnceDuration(
+        coordinator,
+        unique_key="heater_2_runonce_duration",
+        name="Heater 2 Run Once Duration",
+        start_reg=REG_H2_RUNONCE_START,
+        end_reg=REG_H2_RUNONCE_END,
+    ))
 
     async_add_entities(entities)
 
@@ -157,11 +188,11 @@ class AquatekSetbackTempNumber(AquatekEntity, NumberEntity):
         await self.coordinator.async_write_register(REG_VF2_SETBACK_TEMP, [int(-value * 2)])
 
 
-class AquatekSocketRunOnceDuration(AquatekEntity, NumberEntity):
-    """Run Once duration for a socket, in minutes.
+class AquatekRunOnceDuration(AquatekEntity, NumberEntity):
+    """Run Once duration in minutes for any timer (socket, filter, heater).
 
-    The device uses (end - start) as the duration delta when RunOnce is activated.
-    We always store start=0x0000 and end=(h<<8)|m so the duration reads back cleanly.
+    Reads the current duration from (end - start) registers with midnight rollover.
+    Writing sets start=now and end=now+duration so the device runs from this moment.
     Max duration: 23 hours 59 minutes (1439 minutes).
     """
 
@@ -172,11 +203,18 @@ class AquatekSocketRunOnceDuration(AquatekEntity, NumberEntity):
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_icon = "mdi:timer"
 
-    def __init__(self, coordinator: AquatekCoordinator, socket_n: int) -> None:
-        super().__init__(coordinator, f"socket_{socket_n}_runonce_duration")
-        self._attr_name = f"Socket {socket_n} Run Once Duration"
-        self._start_reg = REG_SOCKET_RUNONCE_START_BASE + (socket_n - 1)
-        self._end_reg = REG_SOCKET_RUNONCE_END_BASE + (socket_n - 1)
+    def __init__(
+        self,
+        coordinator: AquatekCoordinator,
+        unique_key: str,
+        name: str,
+        start_reg: int,
+        end_reg: int,
+    ) -> None:
+        super().__init__(coordinator, unique_key)
+        self._attr_name = name
+        self._start_reg = start_reg
+        self._end_reg = end_reg
 
     @property
     def native_value(self) -> float | None:
@@ -186,49 +224,16 @@ class AquatekSocketRunOnceDuration(AquatekEntity, NumberEntity):
             return None
         start_mins = ((start_raw >> 8) & 0xFF) * 60 + (start_raw & 0xFF)
         end_mins = ((end_raw >> 8) & 0xFF) * 60 + (end_raw & 0xFF)
-        delta = end_mins - start_mins
+        delta = (end_mins - start_mins) % 1440
         return float(delta) if delta > 0 else None
 
     async def async_set_native_value(self, value: float) -> None:
-        minutes = int(value)
-        end_encoded = ((minutes // 60) << 8) | (minutes % 60)
-        await self.coordinator.async_write_register(self._start_reg, [0x0000])
+        now = dt_util.now()
+        start_encoded = (now.hour << 8) | now.minute
+        end_dt = now + timedelta(minutes=int(value))
+        end_encoded = (end_dt.hour << 8) | end_dt.minute
+        await self.coordinator.async_write_register(self._start_reg, [start_encoded])
         await self.coordinator.async_write_register(self._end_reg, [end_encoded])
-
-
-class AquatekFilterRunOnceDuration(AquatekEntity, NumberEntity):
-    """Filter pump Run Once duration in minutes.
-
-    Reads (end - start) delta from 57670/57650 and writes start=0x0000, end=(h<<8)|m.
-    """
-
-    _attr_name = "Filter Run Once Duration"
-    _attr_mode = NumberMode.BOX
-    _attr_native_min_value = 1.0
-    _attr_native_max_value = 1439.0
-    _attr_native_step = 1.0
-    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
-    _attr_icon = "mdi:timer"
-
-    def __init__(self, coordinator: AquatekCoordinator) -> None:
-        super().__init__(coordinator, "filter_runonce_duration")
-
-    @property
-    def native_value(self) -> float | None:
-        start_raw = self._reg(REG_FILTER_RUNONCE_START)
-        end_raw = self._reg(REG_FILTER_RUNONCE_END)
-        if start_raw is None or end_raw is None or end_raw == TIME_REG_UNSET:
-            return None
-        start_mins = ((start_raw >> 8) & 0xFF) * 60 + (start_raw & 0xFF)
-        end_mins = ((end_raw >> 8) & 0xFF) * 60 + (end_raw & 0xFF)
-        delta = end_mins - start_mins
-        return float(delta) if delta > 0 else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        minutes = int(value)
-        end_encoded = ((minutes // 60) << 8) | (minutes % 60)
-        await self.coordinator.async_write_register(REG_FILTER_RUNONCE_START, [0x0000])
-        await self.coordinator.async_write_register(REG_FILTER_RUNONCE_END, [end_encoded])
 
 
 class AquatekFilterDutyCycleNumber(AquatekEntity, NumberEntity):

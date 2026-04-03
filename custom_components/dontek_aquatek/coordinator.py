@@ -6,7 +6,6 @@ when MQTT messages arrive. No polling — the device pushes all state changes.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -134,20 +133,15 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
     async def async_write_register(self, reg: int, values: list[int]) -> bool:
         """Publish a Modbus write command and optimistically update local state.
 
-        After a short delay, requests a full state dump so HA reflects any
-        secondary state changes the device makes in response to the write.
+        The device pushes reactive updates for any secondary register changes,
+        so no post-write poll is needed.
         """
         ok = await self.mqtt_client.publish_command(reg, values)
         if ok and self.data is not None:
             for offset, val in enumerate(values):
                 self.data[reg + offset] = val
             self.async_set_updated_data(self.data)
-            self.hass.async_create_task(self._poll_after_write())
         return ok
-
-    async def _poll_after_write(self) -> None:
-        await asyncio.sleep(1.0)
-        await self.mqtt_client._poll_state()
 
     def get_device_name(self) -> str | None:
         """Reconstruct the device name from registers 65488–65495.

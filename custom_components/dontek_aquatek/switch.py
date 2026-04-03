@@ -17,8 +17,9 @@ Filter pump timer switches:
 - Filter Run Once — 57630 bit 0 (read-modify-write to preserve VF pump speed)
 
 Heater schedule enable switches:
-- Heater 1 Schedule Enable — 65517 bit 0
-- Heater 2 Schedule Enable — 57606 bit 0
+- Heater 1 Schedule 1/2 Enable — 65374 bit field (bit 0=slot 1, bit 1=slot 2)
+- Heater 2 Schedule 1/2 Enable — 57531 bit field (bit 0=slot 1, bit 1=slot 2)
+- Heater 1/2 Run Once — 57625 / 57626
 """
 
 from __future__ import annotations
@@ -35,9 +36,11 @@ from .const import (
     REG_FILTER_RUNONCE_CTRL,
     REG_FILTER_SCHEDULE_ENABLE,
     REG_H1_POOL_SETPOINT,
+    REG_H1_RUNONCE_ENABLE,
     REG_H1_SCHEDULE_ENABLE,
     REG_H1_SPA_SETPOINT,
     REG_H2_POOL_SETPOINT,
+    REG_H2_RUNONCE_ENABLE,
     REG_H2_SCHEDULE_ENABLE,
     REG_H2_SPA_SETPOINT,
     REG_RUN_TILL_HEATED,
@@ -92,8 +95,12 @@ async def async_setup_entry(
     entities.append(AquatekFilterRunOnceSwitch(coordinator))
 
     # Heater schedule enable
-    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_1_schedule_enable", "Heater 1 Schedule Enable", REG_H1_SCHEDULE_ENABLE))
-    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_2_schedule_enable", "Heater 2 Schedule Enable", REG_H2_SCHEDULE_ENABLE))
+    entities.append(AquatekBoolSwitch(coordinator, "heater_1_runonce", "Heater 1 Run Once", REG_H1_RUNONCE_ENABLE, icon="mdi:timer-play"))
+    entities.append(AquatekBoolSwitch(coordinator, "heater_2_runonce", "Heater 2 Run Once", REG_H2_RUNONCE_ENABLE, icon="mdi:timer-play"))
+    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_1_schedule_enable",  "Heater 1 Schedule 1 Enable", REG_H1_SCHEDULE_ENABLE, bit=0))
+    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_1_schedule2_enable", "Heater 1 Schedule 2 Enable", REG_H1_SCHEDULE_ENABLE, bit=1))
+    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_2_schedule_enable",  "Heater 2 Schedule 1 Enable", REG_H2_SCHEDULE_ENABLE, bit=0))
+    entities.append(AquatekHeaterScheduleSwitch(coordinator, "heater_2_schedule2_enable", "Heater 2 Schedule 2 Enable", REG_H2_SCHEDULE_ENABLE, bit=1))
 
     async_add_entities(entities)
 
@@ -113,6 +120,23 @@ class _AquatekBoolSwitch(AquatekEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.async_write_register(self._register, [0])
+
+
+class AquatekBoolSwitch(_AquatekBoolSwitch):
+    """Generic 0/1 switch with name, register, and icon set at construction time."""
+
+    def __init__(
+        self,
+        coordinator: AquatekCoordinator,
+        unique_key: str,
+        name: str,
+        register: int,
+        icon: str = "mdi:toggle-switch",
+    ) -> None:
+        super().__init__(coordinator, unique_key)
+        self._attr_name = name
+        self._register = register
+        self._attr_icon = icon
 
 
 class AquatekRunTillHeatedSwitch(_AquatekBoolSwitch):
@@ -289,10 +313,9 @@ class AquatekFilterRunOnceSwitch(AquatekEntity, SwitchEntity):
 
 
 class AquatekHeaterScheduleSwitch(_AquatekBitSwitch):
-    """Enable/disable the recurring schedule for a heater (bit 0 of enable register)."""
+    """Enable/disable a heater schedule slot (bit field: bit 0 = slot 1, bit 1 = slot 2)."""
 
     _attr_icon = "mdi:calendar-clock"
-    _bit = 0
 
     def __init__(
         self,
@@ -300,10 +323,12 @@ class AquatekHeaterScheduleSwitch(_AquatekBitSwitch):
         unique_key: str,
         name: str,
         register: int,
+        bit: int = 0,
     ) -> None:
         super().__init__(coordinator, unique_key)
         self._attr_name = name
         self._register = register
+        self._bit = bit
 
 
 class AquatekSetpointOffSwitch(AquatekEntity, SwitchEntity):

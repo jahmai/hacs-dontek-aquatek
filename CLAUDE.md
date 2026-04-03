@@ -163,6 +163,11 @@ Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `cons
 | 65523 | Heater 1 chilling | bool |
 | 57586 | Heater 1 hydrotherapy | bool |
 | 65500 | Run Till Heated | bool (shared / Heater 1 context) |
+| 65374 | Heater 1 schedule enable | bit field: bit 0=slot 1, bit 1=slot 2 ✓ confirmed 2026-04-03 |
+| 65466 | Heater 1 schedule 1 start | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 65467 | Heater 1 schedule 1 end | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 65413 | Heater 1 schedule 2 start | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 65426 | Heater 1 schedule 2 end | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
 
 **Heater 2 (VF2)** — Heat Pump on tested device (app label "Heater 2" = VF2 type):
 
@@ -181,6 +186,11 @@ Light type 0 = None. All brands and colour lists are in `LIGHT_COLOURS` in `cons
 | 57579 | Heater 2 setback temperature | stored as positive integer, 0.5°C steps; read: `-(val × 0.5)` °C; range 0 to −15°C |
 | 57577 | Boost (Party Mode) | bool |
 | 57583 | Heater mode | value=0 observed; purpose unconfirmed |
+| 57531 | Heater 2 schedule enable | bit field: bit 0=slot 1, bit 1=slot 2 ✓ confirmed 2026-04-03 |
+| 57538 | Heater 2 schedule 1 start | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 57545 | Heater 2 schedule 1 end | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 57552 | Heater 2 schedule 2 start | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
+| 57559 | Heater 2 schedule 2 end | (hh<<8)\|mm ✓ confirmed 2026-04-03 |
 | 57650 | Filter time 1 | |
 | 57670 | Filter time 2 | |
 
@@ -283,6 +293,12 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `climate` | Heater 2 | ctrl=57517, setpoint=57575 |
 | `switch` | Run Till Heated | 65500 |
 | `switch` | Boost (Party Mode) | 57577 |
+| `switch` | Heater 1 Run Once | 57625 (0=off, 1=on) |
+| `switch` | Heater 2 Run Once | 57626 (0=off, 1=on) |
+| `number` | Heater 1 Run Once Duration | 57645 / 57665 (start=now, end=now+N; duration = end−start, exclusive) |
+| `number` | Heater 2 Run Once Duration | 57646 / 57666 (same encoding) |
+| `switch` | Heater 1 Schedule 1/2 Enable | 65374 (bit 0=slot 1, bit 1=slot 2) |
+| `switch` | Heater 2 Schedule 1/2 Enable | 57531 (bit 0=slot 1, bit 1=slot 2) |
 | `switch` | Heater 1 Sanitiser | 65501 |
 | `switch` | Heater 1 Chilling | 65523 |
 | `switch` | Heater 1 Hydrotherapy | 57586 |
@@ -290,6 +306,14 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `switch` | Heater 2 Chilling | 57569 |
 | `switch` | Heater 2 Hydrotherapy | 57587 |
 | `switch` | Heater 2 Track / Setback | 57578 |
+| `time` | Heater 1 Schedule 1 Start/End | 65466 / 65467 |
+| `time` | Heater 1 Schedule 2 Start/End | 65413 / 65426 |
+| `time` | Heater 2 Schedule 1 Start/End | 57538 / 57545 |
+| `time` | Heater 2 Schedule 2 Start/End | 57552 / 57559 |
+| `time` | Socket 1–5 Schedule 1/2 Start/End | see const.py |
+| `time` | Filter Schedule 1–4 Start/End | see const.py |
+| `number` | Socket 1–5 Run Once Duration | start=REG_SOCKET_RUNONCE_START_BASE+(n-1), end+n; duration = end−start |
+| `number` | Filter Run Once Duration | 57650 / 57670 |
 | `number` | Heater 1 Cool-Down Time | 65451 (minutes, 0–60) |
 | `number` | Heater 2 Cool-Down Time | 57568 (minutes, 0–60) |
 | `number` | Heater 2 Setback Temperature | 57579 (0 to −15°C, 0.5°C steps) |
@@ -418,6 +442,20 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 ### 2026-04-01 (continued)
 - **65499 = Heater 1 pump type + sensor location** — identical packing to VF2 (57574): 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLineSensor ✓
 - VF1 and VF2 use the exact same packed register encoding for pump type and sensor location
+
+### 2026-04-04
+- **Run-once duration encoding**: `duration = end_reg − start_reg` (exclusive range, not inclusive). Write `end = now + N` for N minutes. Read `delta = (end_mins − start_mins) % 1440`. Applies to all run-once timers (sockets, filter, heater 1, heater 2).
+- **57625 = Heater 1 Run Once enable**, **57645 / 57665 = Heater 1 Run Once start / end** ✓ confirmed via toggle test
+- **57626 = Heater 2 Run Once enable**, **57646 / 57666 = Heater 2 Run Once start / end** ✓ confirmed via toggle test
+
+### 2026-04-03
+- **65374 = Heater 1 schedule enable** — bit field: bit 0=slot 1, bit 1=slot 2 ✓ confirmed via toggle test
+- **57531 = Heater 2 schedule enable** — bit field: bit 0=slot 1, bit 1=slot 2 ✓ confirmed via toggle test (was previously and incorrectly assigned to H1)
+- **65466 = Heater 1 schedule 1 start**, **65467 = Heater 1 schedule 1 end** — (hh<<8)|mm ✓ (H1 schedule consistently in 65xxx)
+- **65413 = Heater 1 schedule 2 start**, **65426 = Heater 1 schedule 2 end** — (hh<<8)|mm ✓ confirmed via live register change
+- **57538 = Heater 2 schedule 1 start**, **57545 = Heater 2 schedule 1 end** — (hh<<8)|mm ✓ (H2 schedule consistently in 57xxx)
+- **57552 = Heater 2 schedule 2 start**, **57559 = Heater 2 schedule 2 end** — (hh<<8)|mm ✓ confirmed via live register change
+- H1 schedule registers are entirely in 65xxx range; H2 schedule registers are entirely in 57xxx range
 
 ### 2026-04-02
 - **81 = Heater 1 (Gas Heater / VF1) status** ✓ — confirmed via live dump with heater in "Run On" (code 5); reg 81=5 matched exactly. Prior assumption of reg 185 was wrong.
