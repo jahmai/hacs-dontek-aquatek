@@ -25,6 +25,14 @@
       "already_configured": "This controller is already configured."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dontek Aquatek",
+        "description": "**Device MAC:** `{mac}`\n\nTo reload the integration, close this dialog and use the ⋮ menu → Reload."
+      }
+    }
+  },
   "entity": {
     "switch": {
       "pump": { "name": "Pump {index}" },

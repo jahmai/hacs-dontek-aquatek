@@ -13,7 +13,8 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
 
 from .auth import provision_and_store
 from .const import CONF_MAC, DOMAIN
@@ -54,8 +55,30 @@ STEP_USER_SCHEMA = vol.Schema(
 )
 
 
+class AquatekOptionsFlow(OptionsFlow):
+    """Options flow — shows device info and triggers reload via HA's built-in button."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data={})
+
+        mac = self.config_entry.data.get(CONF_MAC, "unknown")
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({}),
+            description_placeholders={"mac": mac},
+        )
+
+
 class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the Aquatek config flow."""
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry) -> AquatekOptionsFlow:
+        return AquatekOptionsFlow()
 
     VERSION = 1
 
