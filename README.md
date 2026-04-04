@@ -1,5 +1,7 @@
 # Dontek Aquatek — Home Assistant Integration
 
+> **Note:** This repository was 100% authored by [Claude](https://claude.ai) (Anthropic AI). The human owner provided hardware access, register discovery sessions, and direction — all code and documentation was written by Claude.
+
 HACS custom integration for the **Dontek Aquatek / Theralux Pool+ Manager** pool controller.
 
 Communicates via AWS IoT MQTT (cloud). No local API is available.
