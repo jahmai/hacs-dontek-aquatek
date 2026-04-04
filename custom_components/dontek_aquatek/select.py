@@ -584,7 +584,7 @@ class AquatekVF2SmartHeaterTypeSelect(_AquatekVFSmartHeaterTypeSelect):
         super().__init__(coordinator, "heater_2_smart_heater_type")
 
 
-_JET_PUMP_SCHED_ENABLE_OPTIONS = ["Off", "Gas Heater", "Heat Pump"]
+_JET_PUMP_SCHED_ENABLE_OPTIONS = ["Off", "Gas", "Heat Pump"]
 _JET_PUMP_SCHED_ENABLE_VALUES = [0, 1, 257]
 
 
