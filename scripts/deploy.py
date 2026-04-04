@@ -112,6 +112,15 @@ def main() -> None:
     print(f"Uploading {len(files)} file(s)...")
     run(["scp"] + ssh_opts + [str(f) for f in files] + [f"{target}:{REMOTE_PATH}/"])
 
+    # Upload translations directory if present
+    translations_dir = LOCAL_COMPONENT / "translations"
+    if translations_dir.exists():
+        run(["ssh"] + ssh_opts + [target, f"mkdir -p {REMOTE_PATH}/translations"])
+        translation_files = list(translations_dir.glob("*.json"))
+        if translation_files:
+            print(f"Uploading {len(translation_files)} translation file(s)...")
+            run(["scp"] + ssh_opts + [str(f) for f in translation_files] + [f"{target}:{REMOTE_PATH}/translations/"])
+
     if args.no_restart:
         print("\nSkipped restart (--no-restart). Done.")
         return
