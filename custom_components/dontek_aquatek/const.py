@@ -393,8 +393,9 @@ FILTER_PUMP_STATUS_NAMES: dict[int, str] = {
 # Schedule start/end (65375+n, 65388+n, 65401+n, 65414+n): encoded as (hours << 8) | minutes
 #   65535 (0xFFFF) = unset / "--:--" in app
 # RunOnce enable (57613+n): 0=off, 1=on
-# RunOnce start/end (57633+n, 57653+n): duration delta — device uses (end - start) as duration.
-#   Writing start=0x0000 and end=(h<<8)|m encodes duration cleanly.
+# RunOnce start/end (57633+n, 57653+n): duration encoded as end - start (exclusive).
+#
+# NOTE: Jet Pump (type 12) uses dedicated schedule registers, not the sequential bases above.
 REG_SOCKET_SCHEDULE_ENABLE_BASE = 65362   # bit 0=sched1, bit 1=sched2
 REG_SOCKET_SCHED1_START_BASE    = 65375   # Schedule 1 start: (hh<<8)|mm
 REG_SOCKET_SCHED1_END_BASE      = 65388   # Schedule 1 end:   (hh<<8)|mm
@@ -403,6 +404,18 @@ REG_SOCKET_SCHED2_END_BASE      = 65414   # Schedule 2 end:   (hh<<8)|mm
 REG_SOCKET_RUNONCE_ENABLE_BASE  = 57613   # RunOnce enable: 0=off, 1=on
 REG_SOCKET_RUNONCE_START_BASE   = 57633   # RunOnce start time
 REG_SOCKET_RUNONCE_END_BASE     = 57653   # RunOnce end time
+
+# Jet Pump (type 12) dedicated schedule registers — confirmed 2026-04-04.
+# Enable encodes heater mode: 0=off, 1=VF1/Gas Heater, 257=VF2/Heat Pump (not a simple bool).
+REG_JET_PUMP_SCHED1_ENABLE = 65517   # 0=off, 1=Gas Heater (VF1), 257=Heat Pump (VF2) ✓
+REG_JET_PUMP_SCHED1_START  = 65518   # (hh<<8)|mm ✓
+REG_JET_PUMP_SCHED1_END    = 65519   # (hh<<8)|mm ✓
+REG_JET_PUMP_SCHED2_ENABLE = 57606   # 0=off, 1=Gas Heater (VF1), 257=Heat Pump (VF2) ✓
+REG_JET_PUMP_SCHED2_START  = 57607   # (hh<<8)|mm ✓
+REG_JET_PUMP_SCHED2_END    = 57608   # (hh<<8)|mm ✓
+REG_JET_PUMP_RUNONCE_ENABLE = 57632  # 0=off, 1=on ✓
+REG_JET_PUMP_RUNONCE_START  = 57652  # (hh<<8)|mm ✓
+REG_JET_PUMP_RUNONCE_END    = 57672  # (hh<<8)|mm ✓
 
 # Sentinel value for unset time registers (displayed as "--:--" in app)
 TIME_REG_UNSET = 0xFFFF

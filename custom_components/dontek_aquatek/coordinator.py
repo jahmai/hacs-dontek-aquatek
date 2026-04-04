@@ -6,6 +6,7 @@ when MQTT messages arrive. No polling — the device pushes all state changes.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry

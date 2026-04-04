@@ -43,9 +43,11 @@ from .const import (
     REG_H2_RUNONCE_ENABLE,
     REG_H2_SCHEDULE_ENABLE,
     REG_H2_SPA_SETPOINT,
+    REG_JET_PUMP_RUNONCE_ENABLE,
     REG_RUN_TILL_HEATED,
     REG_SOCKET_RUNONCE_ENABLE_BASE,
     REG_SOCKET_SCHEDULE_ENABLE_BASE,
+    REG_SOCKET_TYPE_BASE,
     REG_VF1_CHILLING,
     REG_VF1_HYDRO,
     REG_VF1_SANITISER,
@@ -54,6 +56,7 @@ from .const import (
     REG_VF2_SANITISER,
     REG_VF2_SETBACK,
     SOCKET_COUNT,
+    SOCKET_TYPE_JET_PUMP,
 )
 from .coordinator import AquatekCoordinator
 from .entity_base import AquatekEntity
@@ -81,11 +84,17 @@ async def async_setup_entry(
         AquatekSetpointOffSwitch(coordinator, "heater_2_spa_off",  "Heater 2 Spa Off",  REG_H2_SPA_SETPOINT),
     ]
 
-    # Socket timer switches — all 5 sockets, always created
+    # Socket timer switches — all 5 sockets, always created.
+    # Jet Pump sockets use dedicated registers for run-once and have a tri-state
+    # schedule enable (select entity in select.py), so schedule switches are skipped.
+    data = coordinator.data or {}
     for n in range(1, SOCKET_COUNT + 1):
-        entities.append(AquatekSocketScheduleSwitch(coordinator, n, 0))
-        entities.append(AquatekSocketScheduleSwitch(coordinator, n, 1))
-        entities.append(AquatekSocketRunOnceSwitch(coordinator, n))
+        socket_type = data.get(REG_SOCKET_TYPE_BASE + (n - 1), 0)
+        if socket_type != SOCKET_TYPE_JET_PUMP:
+            entities.append(AquatekSocketScheduleSwitch(coordinator, n, 0))
+            entities.append(AquatekSocketScheduleSwitch(coordinator, n, 1))
+        runonce_reg = REG_JET_PUMP_RUNONCE_ENABLE if socket_type == SOCKET_TYPE_JET_PUMP else REG_SOCKET_RUNONCE_ENABLE_BASE + (n - 1)
+        entities.append(AquatekSocketRunOnceSwitch(coordinator, n, runonce_reg))
 
     # Filter pump schedule enable — 4 slots, bit field in 65318
     for slot in range(FILTER_SCHED_COUNT):
@@ -262,14 +271,18 @@ class AquatekSocketScheduleSwitch(_AquatekBitSwitch):
 
 
 class AquatekSocketRunOnceSwitch(_AquatekBoolSwitch):
-    """Enable/disable the Run Once timer for a socket (57613 + socket_n - 1)."""
+    """Enable/disable the Run Once timer for a socket.
+
+    Non-Jet-Pump sockets: register = 57613 + socket_n - 1.
+    Jet Pump sockets: register = 57632 (dedicated, passed in explicitly).
+    """
 
     _attr_icon = "mdi:timer-play"
 
-    def __init__(self, coordinator: AquatekCoordinator, socket_n: int) -> None:
+    def __init__(self, coordinator: AquatekCoordinator, socket_n: int, register: int) -> None:
         super().__init__(coordinator, f"socket_{socket_n}_runonce")
         self._attr_name = f"Socket {socket_n} Run Once"
-        self._register = REG_SOCKET_RUNONCE_ENABLE_BASE + (socket_n - 1)
+        self._register = register
 
 
 class AquatekFilterScheduleSwitch(_AquatekBitSwitch):

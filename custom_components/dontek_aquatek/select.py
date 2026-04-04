@@ -42,6 +42,8 @@ from .const import (
     VALVE_TYPE_VALUES,
     VF_TYPE_OPTIONS,
     VF_TYPE_VALUES,
+    REG_JET_PUMP_SCHED1_ENABLE,
+    REG_JET_PUMP_SCHED2_ENABLE,
     REG_POOL_LIGHT_CTRL,
     REG_POOL_SPA_MODE,
     REG_SOCKET_OUTPUT_BASE,
@@ -55,6 +57,7 @@ from .const import (
     REG_VF2_SENSOR_LOC,
     REG_VF2_PUMP_SPEED,
     REG_VF2_SMART_HEATER_TYPE,
+    SOCKET_TYPE_JET_PUMP,
     SOCKET_TYPE_POOL_LIGHT,
     SMART_HEATER_TYPE_OPTIONS,
     SMART_HEATER_TYPE_VALUES,
@@ -101,8 +104,12 @@ async def async_setup_entry(
     ]
     for slot in range(FILTER_SCHED_COUNT):
         fixed.append(AquatekFilterScheduleSpeedSelect(coordinator, slot))
+    data = coordinator.data or {}
     for n in range(1, SOCKET_COUNT + 1):
         fixed.append(AquatekSocketApplianceSelect(coordinator, n))
+        if data.get(REG_SOCKET_TYPE_BASE + (n - 1), 0) == SOCKET_TYPE_JET_PUMP:
+            fixed.append(AquatekJetPumpSchedEnableSelect(coordinator, n, 1, REG_JET_PUMP_SCHED1_ENABLE))
+            fixed.append(AquatekJetPumpSchedEnableSelect(coordinator, n, 2, REG_JET_PUMP_SCHED2_ENABLE))
     fixed.append(AquatekVFContactApplianceSelect(coordinator, 1, REG_VF1_TYPE))
     fixed.append(AquatekVFContactApplianceSelect(coordinator, 2, REG_VF2_TYPE))
     for n in range(1, VALVE_COUNT + 1):
@@ -575,6 +582,45 @@ class AquatekVF2SmartHeaterTypeSelect(_AquatekVFSmartHeaterTypeSelect):
 
     def __init__(self, coordinator: AquatekCoordinator) -> None:
         super().__init__(coordinator, "heater_2_smart_heater_type")
+
+
+_JET_PUMP_SCHED_ENABLE_OPTIONS = ["Off", "Gas Heater", "Heat Pump"]
+_JET_PUMP_SCHED_ENABLE_VALUES = [0, 1, 257]
+
+
+class AquatekJetPumpSchedEnableSelect(AquatekEntity, SelectEntity):
+    """Schedule enable for a Jet Pump socket — tri-state: Off / Gas Heater / Heat Pump.
+
+    0=Off, 1=Gas Heater (VF1), 257=Heat Pump (VF2).
+    """
+
+    _attr_options = _JET_PUMP_SCHED_ENABLE_OPTIONS
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(
+        self,
+        coordinator: AquatekCoordinator,
+        socket_n: int,
+        sched_num: int,
+        register: int,
+    ) -> None:
+        super().__init__(coordinator, f"socket_{socket_n}_schedule_{sched_num}_enable")
+        self._attr_name = f"Socket {socket_n} Schedule {sched_num} Enable"
+        self._register = register
+
+    @property
+    def current_option(self) -> str | None:
+        val = self._reg(self._register)
+        if val is None:
+            return None
+        try:
+            return _JET_PUMP_SCHED_ENABLE_OPTIONS[_JET_PUMP_SCHED_ENABLE_VALUES.index(val)]
+        except ValueError:
+            return "Off"
+
+    async def async_select_option(self, option: str) -> None:
+        val = _JET_PUMP_SCHED_ENABLE_VALUES[_JET_PUMP_SCHED_ENABLE_OPTIONS.index(option)]
+        await self.coordinator.async_write_register(self._register, [val])
 
 
 class AquatekSocketApplianceSelect(AquatekEntity, SelectEntity):

@@ -113,6 +113,22 @@ The controller has **5 configurable output sockets**. Each socket is assigned an
 - Socket 4 → reg 65339 → Pool Light (type 5) ✓
 - Socket 5 → reg 65340 → None (type 0) ✓
 
+**Jet Pump (type 12) — dedicated registers** (confirmed 2026-04-04):
+
+Schedule and run-once registers are **type-based, not position-based**. Any socket configured as Jet Pump uses the same fixed registers regardless of which socket number it occupies.
+
+| Register | Feature | Values |
+|----------|---------|--------|
+| 65517 | Jet Pump schedule 1 enable | 0=Off, 1=Gas Heater (VF1), 257=Heat Pump (VF2) |
+| 65518 | Jet Pump schedule 1 start | (hh<<8)\|mm |
+| 65519 | Jet Pump schedule 1 end | (hh<<8)\|mm |
+| 57606 | Jet Pump schedule 2 enable | same values as 65517 |
+| 57607 | Jet Pump schedule 2 start | (hh<<8)\|mm |
+| 57608 | Jet Pump schedule 2 end | (hh<<8)\|mm |
+| 57632 | Jet Pump run-once enable | 0=off, 1=on |
+| 57652 | Jet Pump run-once start | (hh<<8)\|mm |
+| 57672 | Jet Pump run-once end | (hh<<8)\|mm |
+
 ### VF Connectors
 
 Two VF ports exist but they are **heater type config only** — they determine which heater is assigned to each VF port, not speed. The filter pump has its own separate serial connection.
@@ -271,6 +287,7 @@ Entities must be **auto-discovered** from the socket config registers on connect
 |----------|--------|-------------|
 | `select` | Socket 1–5 output (auto-discovered) | 65336+(n-1) |
 | `select` | Socket 1–5 Appliance | 65323+(n-1) (0–14, see socket type table) |
+| `select` | Jet Pump Schedule 1/2 Enable | 65517 / 57606 (0=Off, 1=Gas Heater, 257=Heat Pump) — Jet Pump sockets only |
 | `select` | Valve 1–4 Appliance | 65331+(n-1) (0–7, see valve type table) |
 | `select` | VF 1 Appliance | 65335 (0=None, 1=Gas Heater, 2=Heat Pump) |
 | `select` | VF 2 Appliance | 57510 (same values) |
@@ -306,13 +323,15 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `switch` | Heater 2 Chilling | 57569 |
 | `switch` | Heater 2 Hydrotherapy | 57587 |
 | `switch` | Heater 2 Track / Setback | 57578 |
+| `switch` | Socket 1–5 Schedule 1/2 Enable | 65362+(n-1) bit-field (bit 0=sched1, bit 1=sched2) — non-Jet-Pump sockets only |
+| `switch` | Socket 1–5 Run Once | 57613+(n-1) — non-Jet-Pump; Jet Pump uses 57632 |
 | `time` | Heater 1 Schedule 1 Start/End | 65466 / 65467 |
 | `time` | Heater 1 Schedule 2 Start/End | 65413 / 65426 |
 | `time` | Heater 2 Schedule 1 Start/End | 57538 / 57545 |
 | `time` | Heater 2 Schedule 2 Start/End | 57552 / 57559 |
-| `time` | Socket 1–5 Schedule 1/2 Start/End | see const.py |
+| `time` | Socket 1–5 Schedule 1/2 Start/End | see const.py; Jet Pump uses 65518/65519 (sched1), 57607/57608 (sched2) |
 | `time` | Filter Schedule 1–4 Start/End | see const.py |
-| `number` | Socket 1–5 Run Once Duration | start=REG_SOCKET_RUNONCE_START_BASE+(n-1), end+n; duration = end−start |
+| `number` | Socket 1–5 Run Once Duration | non-Jet-Pump: start=57633+(n-1)/end=57653+(n-1); Jet Pump: 57652/57672; duration = end−start |
 | `number` | Filter Run Once Duration | 57650 / 57670 |
 | `number` | Heater 1 Cool-Down Time | 65451 (minutes, 0–60) |
 | `number` | Heater 2 Cool-Down Time | 57568 (minutes, 0–60) |
@@ -447,6 +466,14 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 - **Run-once duration encoding**: `duration = end_reg − start_reg` (exclusive range, not inclusive). Write `end = now + N` for N minutes. Read `delta = (end_mins − start_mins) % 1440`. Applies to all run-once timers (sockets, filter, heater 1, heater 2).
 - **57625 = Heater 1 Run Once enable**, **57645 / 57665 = Heater 1 Run Once start / end** ✓ confirmed via toggle test
 - **57626 = Heater 2 Run Once enable**, **57646 / 57666 = Heater 2 Run Once start / end** ✓ confirmed via toggle test
+- **Jet Pump (type 12) uses dedicated registers**, not the sequential `base + (n-1)` pattern — confirmed by assigning the same socket to Pool Light (which uses sequential registers) vs Jet Pump (which does not):
+  - **65517 = Jet Pump schedule 1 enable** — 0=Off, 1=Gas Heater (VF1), 257=Heat Pump (VF2) ✓ (tri-state, not a bit-field)
+  - **65518 / 65519 = Jet Pump schedule 1 start / end** — (hh<<8)|mm ✓
+  - **57606 = Jet Pump schedule 2 enable** — same values as 65517 ✓
+  - **57607 / 57608 = Jet Pump schedule 2 start / end** — (hh<<8)|mm ✓
+  - **57632 = Jet Pump run-once enable** — 0=off, 1=on ✓ (offset +2 from filter run-once at 57630)
+  - **57652 / 57672 = Jet Pump run-once start / end** ✓ (offset +2 from filter 57650/57670)
+- Schedule enable for Jet Pump is a **tri-state heater selector**, not a boolean: 0=Off (not scheduled), 1=runs with Gas Heater (VF1), 257=runs with Heat Pump (VF2). Implemented as `select` entity, not `switch`.
 
 ### 2026-04-03
 - **65374 = Heater 1 schedule enable** — bit field: bit 0=slot 1, bit 1=slot 2 ✓ confirmed via toggle test

@@ -32,11 +32,17 @@ from .const import (
     REG_H2_SCHEDULE_START,
     REG_H2_SCHEDULE2_END,
     REG_H2_SCHEDULE2_START,
+    REG_JET_PUMP_SCHED1_END,
+    REG_JET_PUMP_SCHED1_START,
+    REG_JET_PUMP_SCHED2_END,
+    REG_JET_PUMP_SCHED2_START,
     REG_SOCKET_SCHED1_END_BASE,
     REG_SOCKET_SCHED1_START_BASE,
     REG_SOCKET_SCHED2_END_BASE,
     REG_SOCKET_SCHED2_START_BASE,
+    REG_SOCKET_TYPE_BASE,
     SOCKET_COUNT,
+    SOCKET_TYPE_JET_PUMP,
     TIME_REG_UNSET,
 )
 from .coordinator import AquatekCoordinator
@@ -51,23 +57,32 @@ async def async_setup_entry(
     coordinator: AquatekCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[AquatekScheduleTime] = []
 
-    # Socket schedule times — always all 5 sockets
+    # Socket schedule times — always all 5 sockets.
+    # Jet Pump (type 12) uses dedicated registers instead of the sequential base+offset pattern.
+    data = coordinator.data or {}
     for n in range(1, SOCKET_COUNT + 1):
+        socket_type = data.get(REG_SOCKET_TYPE_BASE + (n - 1), 0)
         for sched_idx in range(2):
             sched_num = sched_idx + 1
-            start_base = REG_SOCKET_SCHED1_START_BASE if sched_idx == 0 else REG_SOCKET_SCHED2_START_BASE
-            end_base   = REG_SOCKET_SCHED1_END_BASE   if sched_idx == 0 else REG_SOCKET_SCHED2_END_BASE
+            if socket_type == SOCKET_TYPE_JET_PUMP:
+                start_reg = REG_JET_PUMP_SCHED1_START if sched_idx == 0 else REG_JET_PUMP_SCHED2_START
+                end_reg   = REG_JET_PUMP_SCHED1_END   if sched_idx == 0 else REG_JET_PUMP_SCHED2_END
+            else:
+                start_base = REG_SOCKET_SCHED1_START_BASE if sched_idx == 0 else REG_SOCKET_SCHED2_START_BASE
+                end_base   = REG_SOCKET_SCHED1_END_BASE   if sched_idx == 0 else REG_SOCKET_SCHED2_END_BASE
+                start_reg  = start_base + (n - 1)
+                end_reg    = end_base   + (n - 1)
             entities.append(AquatekScheduleTime(
                 coordinator,
                 unique_key=f"socket_{n}_schedule_{sched_num}_start",
                 name=f"Socket {n} Schedule {sched_num} Start",
-                register=start_base + (n - 1),
+                register=start_reg,
             ))
             entities.append(AquatekScheduleTime(
                 coordinator,
                 unique_key=f"socket_{n}_schedule_{sched_num}_end",
                 name=f"Socket {n} Schedule {sched_num} End",
-                register=end_base + (n - 1),
+                register=end_reg,
             ))
 
     # Filter pump schedule times — 4 slots

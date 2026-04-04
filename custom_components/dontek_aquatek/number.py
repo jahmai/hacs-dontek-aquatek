@@ -33,12 +33,16 @@ from .const import (
     REG_H2_RUNONCE_END,
     REG_H2_RUNONCE_START,
     REG_H2_SPA_SETPOINT,
+    REG_JET_PUMP_RUNONCE_END,
+    REG_JET_PUMP_RUNONCE_START,
     REG_SOCKET_RUNONCE_END_BASE,
     REG_SOCKET_RUNONCE_START_BASE,
+    REG_SOCKET_TYPE_BASE,
     REG_VF1_COOLDOWN,
     REG_VF2_COOLDOWN,
     REG_VF2_SETBACK_TEMP,
     SOCKET_COUNT,
+    SOCKET_TYPE_JET_PUMP,
     TIME_REG_UNSET,
 )
 from .coordinator import AquatekCoordinator
@@ -62,14 +66,22 @@ async def async_setup_entry(
         AquatekSetbackTempNumber(coordinator),
     ]
 
-    # Per-socket RunOnce duration — all 5 sockets, always created
+    # Per-socket RunOnce duration — all 5 sockets, always created.
+    # Jet Pump sockets use dedicated registers (57652/57672) instead of the sequential bases.
+    data = coordinator.data or {}
     for n in range(1, SOCKET_COUNT + 1):
+        socket_type = data.get(REG_SOCKET_TYPE_BASE + (n - 1), 0)
+        if socket_type == SOCKET_TYPE_JET_PUMP:
+            start_reg, end_reg = REG_JET_PUMP_RUNONCE_START, REG_JET_PUMP_RUNONCE_END
+        else:
+            start_reg = REG_SOCKET_RUNONCE_START_BASE + (n - 1)
+            end_reg = REG_SOCKET_RUNONCE_END_BASE + (n - 1)
         entities.append(AquatekRunOnceDuration(
             coordinator,
             unique_key=f"socket_{n}_runonce_duration",
             name=f"Socket {n} Run Once Duration",
-            start_reg=REG_SOCKET_RUNONCE_START_BASE + (n - 1),
-            end_reg=REG_SOCKET_RUNONCE_END_BASE + (n - 1),
+            start_reg=start_reg,
+            end_reg=end_reg,
         ))
 
     entities.append(AquatekRunOnceDuration(
