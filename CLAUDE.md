@@ -354,13 +354,28 @@ User enters the device identifier from the sticker. Accepted formats:
 
 The flow:
 1. Parses and normalises input to a lowercase no-colon MAC (`CONF_MAC`)
-2. Provisions an AWS IoT certificate (Cognito → IoT → attach policy)
-3. Creates the config entry
+2. User selects connection mode (AWS Cloud or Local Broker toggle)
+3. **AWS Cloud:** provisions an AWS IoT certificate (Cognito → IoT → attach policy) → creates config entry
+4. **Local Broker:** prompts for host + port (default `localhost:11883`) → creates config entry (no cert provisioning)
+
+### Connection Modes
+
+**AWS Cloud** (default) — `CONF_USE_LOCAL_BROKER = False`
+- Connects to `a219g53ny7vwvd-ats.iot.ap-southeast-2.amazonaws.com` via `awsiotsdk` mutual TLS
+- Requires unauthenticated Cognito provisioning on first setup
+
+**Local Broker** — `CONF_USE_LOCAL_BROKER = True`
+- Connects to a plain-TCP MQTT broker (e.g. the `hacs-dontek-aquatek-mqtt-server` project)
+- No TLS, no AWS, no cert provisioning
+- Requires firmware patched to point at the local broker
+- Config entry also stores `CONF_LOCAL_BROKER_HOST` and `CONF_LOCAL_BROKER_PORT`
+- Default port `11883` (non-standard to avoid clashing with Mosquitto on 1883)
 
 ### Python Dependencies
 
-- `awsiotsdk>=1.21.0` — MQTT with X.509 auth
-- `boto3>=1.34.0` — Cognito + IoT provisioning
+- `awsiotsdk>=1.21.0` — MQTT with X.509 auth (AWS Cloud mode)
+- `boto3>=1.34.0` — Cognito + IoT provisioning (AWS Cloud mode)
+- `paho-mqtt` — plain-TCP MQTT client (Local Broker mode); ships with HA, not listed in manifest
 
 ## Key Files
 
@@ -368,9 +383,9 @@ The flow:
 |------|---------|
 | `const.py` | All constants and register map |
 | `auth.py` | AWS certificate provisioning and HA storage |
-| `mqtt_client.py` | MQTT connection, reconnect, watchdog |
+| `mqtt_client.py` | `AquatekMQTTClient` (AWS/TLS) and `AquatekLocalMQTTClient` (plain TCP) |
 | `coordinator.py` | Push-based DataUpdateCoordinator |
-| `config_flow.py` | HA config flow UI |
+| `config_flow.py` | HA config flow UI — AWS Cloud or Local Broker selection |
 | `entity_base.py` | Shared base class |
 | `switch.py` | Bool entities (boost, run-till-heated, sanitiser, chilling, hydro, track/setback) |
 | `number.py` | Cool-down time and setback temperature |

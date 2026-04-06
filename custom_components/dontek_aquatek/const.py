@@ -23,6 +23,12 @@ CONF_CERT_ID = "cert_id"
 STORAGE_KEY = "aquatek_certs"
 STORAGE_VERSION = 1
 
+# Local broker connection config keys
+CONF_USE_LOCAL_BROKER = "use_local_broker"
+CONF_LOCAL_BROKER_HOST = "local_broker_host"
+CONF_LOCAL_BROKER_PORT = "local_broker_port"
+DEFAULT_LOCAL_BROKER_PORT = 11883
+
 # MQTT reconnect timing (seconds)
 RECONNECT_MIN = 2
 RECONNECT_MAX = 60

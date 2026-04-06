@@ -4,7 +4,7 @@
 
 HACS custom integration for the **Dontek Aquatek / Theralux Pool+ Manager** pool controller.
 
-Communicates via AWS IoT MQTT (cloud). No local API is available.
+Communicates via AWS IoT MQTT (cloud) by default. An optional local broker mode is available for use with patched firmware and a local MQTT server.
 
 ## Requirements
 
@@ -35,7 +35,13 @@ Accepted formats:
 - MAC without separators — `aabbccddeeff`
 - Numeric QR code ID — the long number printed below the QR code
 
-The integration will automatically provision an AWS IoT certificate and connect to your controller.
+### AWS Cloud (default)
+
+Leave the **Use local MQTT broker** toggle off. The integration will automatically provision an AWS IoT certificate and connect to your controller via the cloud.
+
+### Local Broker (advanced)
+
+Enable the **Use local MQTT broker** toggle if you are running a local MQTT broker (e.g. [hacs-dontek-aquatek-mqtt-server](https://github.com/jahmai/hacs-dontek-aquatek-mqtt-server)) and have patched your controller firmware to point at it. You will be prompted for the broker host and port (default `localhost:11883`). No AWS account or certificate provisioning is required in this mode.
 
 ## Entities
 

@@ -303,3 +303,175 @@ class AquatekMQTTClient:
                         "No status message for %.0fs — marking offline", age
                     )
                     self._set_state(ConnectionState.CONNECTED)
+
+
+class AquatekLocalMQTTClient:
+    """Plain-TCP MQTT client for connecting to a local broker (no TLS, no AWS)."""
+
+    def __init__(
+        self,
+        mac: str,
+        host: str,
+        port: int,
+        message_callback: MessageCallback,
+        state_callback: StateCallback,
+    ) -> None:
+        mac_norm = _normalise_mac(mac)
+        self._mac = mac_norm
+        self._host = host
+        self._port = port
+        self._message_callback = message_callback
+        self._state_callback = state_callback
+
+        self._client = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._state = ConnectionState.DISCONNECTED
+        self._reconnect_task: asyncio.Task | None = None
+        self._connect_future: asyncio.Future | None = None
+
+        self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
+        self._topic_cmd = TOPIC_CMD.format(mac=mac_norm)
+        self._client_id = f"aquatek-{mac_norm}-{uuid.uuid4().hex[:8]}"
+
+    @property
+    def state(self) -> ConnectionState:
+        return self._state
+
+    def _set_state(self, state: ConnectionState) -> None:
+        if state != self._state:
+            self._state = state
+            self._state_callback(state)
+
+    async def connect(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._set_state(ConnectionState.CONNECTING)
+        await self._do_connect()
+
+    async def _do_connect(self) -> None:
+        import paho.mqtt.client as mqtt  # noqa: PLC0415
+
+        if self._client is not None:
+            try:
+                self._client.loop_stop()
+            except Exception:
+                pass
+
+        try:
+            from paho.mqtt.client import CallbackAPIVersion  # noqa: PLC0415
+            client = mqtt.Client(
+                callback_api_version=CallbackAPIVersion.VERSION1,
+                client_id=self._client_id,
+                clean_session=False,
+            )
+        except ImportError:
+            # paho-mqtt < 2.0
+            client = mqtt.Client(client_id=self._client_id, clean_session=False)
+
+        client.on_connect = self._on_paho_connect
+        client.on_disconnect = self._on_paho_disconnect
+        client.on_message = self._on_paho_message
+        self._client = client
+
+        connect_future: asyncio.Future = self._loop.create_future()
+        self._connect_future = connect_future
+
+        try:
+            await self._loop.run_in_executor(
+                None, lambda: client.connect(self._host, self._port, keepalive=60)
+            )
+            client.loop_start()
+            await asyncio.wait_for(connect_future, timeout=10.0)
+        except Exception:
+            _LOGGER.exception(
+                "Failed to connect to local MQTT broker at %s:%d", self._host, self._port
+            )
+            self._set_state(ConnectionState.DISCONNECTED)
+            self._schedule_reconnect()
+
+    def _on_paho_connect(self, client, userdata, flags, rc) -> None:
+        assert self._loop is not None
+        if rc == 0:
+            self._loop.call_soon_threadsafe(self._handle_connected)
+        else:
+            self._loop.call_soon_threadsafe(
+                self._handle_connect_failed, Exception(f"MQTT connect refused: rc={rc}")
+            )
+
+    def _handle_connected(self) -> None:
+        if self._connect_future and not self._connect_future.done():
+            self._connect_future.set_result(True)
+        self._set_state(ConnectionState.CONNECTED)
+        self._client.subscribe(self._topic_status, qos=0)
+        state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
+        self._client.publish(self._topic_cmd, state_request, qos=0)
+        _LOGGER.info("Connected to local MQTT broker at %s:%d", self._host, self._port)
+
+    def _handle_connect_failed(self, exc: Exception) -> None:
+        if self._connect_future and not self._connect_future.done():
+            self._connect_future.set_exception(exc)
+
+    def _on_paho_disconnect(self, client, userdata, rc) -> None:
+        assert self._loop is not None
+        self._loop.call_soon_threadsafe(self._handle_disconnected, rc)
+
+    def _handle_disconnected(self, rc: int) -> None:
+        if rc != 0:
+            _LOGGER.warning("Local MQTT broker disconnected unexpectedly: rc=%d", rc)
+            self._set_state(ConnectionState.DISCONNECTED)
+            self._schedule_reconnect()
+
+    def _on_paho_message(self, client, userdata, msg) -> None:
+        assert self._loop is not None
+        self._loop.call_soon_threadsafe(self._handle_message, msg.payload)
+
+    def _handle_message(self, payload: bytes) -> None:
+        try:
+            data = json.loads(payload)
+            reg = int(data["modbusReg"])
+            vals = [int(v) for v in data["modbusVal"]]
+        except (json.JSONDecodeError, KeyError, ValueError):
+            _LOGGER.debug("Unparseable message: %s", payload[:120])
+            return
+
+        if self._state != ConnectionState.ONLINE:
+            self._set_state(ConnectionState.ONLINE)
+
+        self._message_callback(reg, vals)
+
+    async def disconnect(self) -> None:
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
+        if self._client:
+            try:
+                self._client.loop_stop()
+                self._client.disconnect()
+            except Exception:
+                pass
+            self._client = None
+        self._set_state(ConnectionState.DISCONNECTED)
+
+    async def publish_command(self, reg: int, values: list[int]) -> bool:
+        if not self._client or self._state == ConnectionState.DISCONNECTED:
+            _LOGGER.warning("Cannot publish — not connected")
+            return False
+        payload = json.dumps({
+            "messageId": "write",
+            "modbusReg": reg,
+            "modbusVal": values,
+        })
+        result = self._client.publish(self._topic_cmd, payload, qos=0)
+        return result.rc == 0
+
+    def _schedule_reconnect(self, delay: float = RECONNECT_MIN) -> None:
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_after(delay))
+
+    async def _reconnect_after(self, delay: float) -> None:
+        await asyncio.sleep(delay)
+        if self._state == ConnectionState.DISCONNECTED:
+            _LOGGER.info("Attempting local MQTT reconnect...")
+            await self._do_connect()
+            if self._state == ConnectionState.DISCONNECTED:
+                self._schedule_reconnect(min(delay * 2, RECONNECT_MAX))

@@ -9,9 +9,16 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .auth import delete_certificates, load_or_provision_certificates
-from .const import CONF_MAC, DOMAIN
+from .const import (
+    CONF_LOCAL_BROKER_HOST,
+    CONF_LOCAL_BROKER_PORT,
+    CONF_MAC,
+    CONF_USE_LOCAL_BROKER,
+    DEFAULT_LOCAL_BROKER_PORT,
+    DOMAIN,
+)
 from .coordinator import AquatekCoordinator
-from .mqtt_client import AquatekMQTTClient
+from .mqtt_client import AquatekLocalMQTTClient, AquatekMQTTClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,14 +37,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Aquatek from a config entry."""
     mac = entry.data[CONF_MAC]
 
-    # Load or provision AWS IoT certificates
-    try:
-        certs = await load_or_provision_certificates(hass, entry.entry_id)
-    except Exception:
-        _LOGGER.exception("Failed to load/provision certificates for %s", mac)
-        return False
-
-    # Build MQTT client (not connected yet)
     coordinator = None  # forward-declare for callbacks
 
     def on_message(reg: int, values: list[int]) -> None:
@@ -48,13 +47,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is not None:
             coordinator.handle_state_change(state)
 
-    mqtt_client = AquatekMQTTClient(
-        mac=mac,
-        cert_pem=certs["cert_pem"],
-        private_key=certs["private_key"],
-        message_callback=on_message,
-        state_callback=on_state_change,
-    )
+    if entry.data.get(CONF_USE_LOCAL_BROKER):
+        host = entry.data.get(CONF_LOCAL_BROKER_HOST, "localhost")
+        port = entry.data.get(CONF_LOCAL_BROKER_PORT, DEFAULT_LOCAL_BROKER_PORT)
+        mqtt_client = AquatekLocalMQTTClient(
+            mac=mac,
+            host=host,
+            port=port,
+            message_callback=on_message,
+            state_callback=on_state_change,
+        )
+    else:
+        try:
+            certs = await load_or_provision_certificates(hass, entry.entry_id)
+        except Exception:
+            _LOGGER.exception("Failed to load/provision certificates for %s", mac)
+            return False
+        mqtt_client = AquatekMQTTClient(
+            mac=mac,
+            cert_pem=certs["cert_pem"],
+            private_key=certs["private_key"],
+            message_callback=on_message,
+            state_callback=on_state_change,
+        )
 
     coordinator = AquatekCoordinator(hass, entry, mqtt_client)
 

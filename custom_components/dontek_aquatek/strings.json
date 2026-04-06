@@ -5,10 +5,20 @@
         "title": "Dontek Aquatek Setup",
         "description": "Enter the MAC address from the QR code sticker on your Aquatek controller.",
         "data": {
-          "device_id": "Device ID"
+          "device_id": "Device ID",
+          "use_local_broker": "Use local MQTT broker"
         },
         "data_description": {
-          "device_id": "Scan the QR code sticker on your controller, or enter the number printed below it (e.g. 12345678901234567)"
+          "device_id": "Scan the QR code sticker on your controller, or enter the number printed below it (e.g. 12345678901234567)",
+          "use_local_broker": "Connect to a local MQTT broker instead of AWS IoT Cloud (requires patched firmware)"
+        }
+      },
+      "local_broker": {
+        "title": "Local MQTT Broker",
+        "description": "Enter the address of your local MQTT broker.",
+        "data": {
+          "local_broker_host": "Host",
+          "local_broker_port": "Port"
         }
       },
       "provision": {
