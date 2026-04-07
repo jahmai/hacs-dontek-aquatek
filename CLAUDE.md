@@ -264,6 +264,11 @@ Register 92 format: `(state_byte << 8) | speed_byte`. Speed byte is 0-indexed (0
 | Register | Feature |
 |----------|---------|
 | 65488–65495 | Device name (8 ASCII bytes) |
+| 65296 | Current year (e.g. 2026) |
+| 65297 | Current month (1–12) |
+| 65298 | Current day (1–31) |
+| 65299 | Current hour (0–23) |
+| 65300 | Current minute (0–59) |
 
 ### Status Feedback Registers
 
@@ -476,6 +481,10 @@ python scripts/smoke_device.py <mac_or_qr_id> --listen 30  # connect to real dev
 ### 2026-04-01 (continued)
 - **65499 = Heater 1 pump type + sensor location** — identical packing to VF2 (57574): 0=Filter, 1=Indep/FilterSensor, 2=Indep/HeaterLineSensor ✓
 - VF1 and VF2 use the exact same packed register encoding for pump type and sensor location
+
+### 2026-04-07
+- **65296–65300 = device RTC** — confirmed via live dump matching wall-clock time: 65296=year, 65297=month, 65298=day, 65299=hour, 65300=minute. Values updated correctly between repeated dumps (minute incremented).
+- **No uptime register found** — reg 321 was a candidate but values decreased across dumps; likely a countdown timer for an unidentified feature, not uptime.
 
 ### 2026-04-04
 - **Run-once duration encoding**: `duration = end_reg − start_reg` (exclusive range, not inclusive). Write `end = now + N` for N minutes. Read `delta = (end_mins − start_mins) % 1440`. Applies to all run-once timers (sockets, filter, heater 1, heater 2).
