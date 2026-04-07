@@ -439,8 +439,8 @@ class AquatekLocalMQTTClient:
     def _handle_disconnected(self, rc: int) -> None:
         if rc != 0:
             _LOGGER.warning("Local MQTT broker disconnected unexpectedly: rc=%d", rc)
-            self._set_state(ConnectionState.DISCONNECTED)
-            self._schedule_reconnect()
+        self._set_state(ConnectionState.DISCONNECTED)
+        self._schedule_reconnect()
 
     def _on_paho_message(self, client, userdata, msg) -> None:
         if client is not self._client:
