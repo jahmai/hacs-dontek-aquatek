@@ -24,6 +24,28 @@
       "provision": {
         "title": "Provisioning",
         "description": "Registering your device with AWS IoT, please wait..."
+      },
+      "reconfigure": {
+        "title": "Reconfigure Aquatek",
+        "description": "**Device MAC:** `{mac}`\n\nChange the connection mode for this controller.",
+        "data": {
+          "use_local_broker": "Use Aquatek MQTT Server"
+        },
+        "data_description": {
+          "use_local_broker": "Connect via the hacs-dontek-aquatek-mqtt-server component instead of AWS IoT Cloud (requires patched firmware)"
+        }
+      },
+      "reconfigure_broker": {
+        "title": "Aquatek MQTT Server",
+        "description": "Enter the address of your Aquatek MQTT Server.",
+        "data": {
+          "local_broker_host": "Host",
+          "local_broker_port": "Port"
+        }
+      },
+      "reconfigure_provision": {
+        "title": "Provisioning",
+        "description": "Registering your device with AWS IoT, please wait..."
       }
     },
     "error": {

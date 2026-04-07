@@ -199,3 +199,116 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _do_provision(self) -> None:
         """Run provisioning and store certs — called as an HA task."""
         await provision_and_store(self.hass, self._mac)
+
+    # ------------------------------------------------------------------
+    # Reconfigure flow — allows switching connection mode without
+    # deleting and re-adding the integration.
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        current_use_local = entry.data.get(CONF_USE_LOCAL_BROKER, False)
+
+        if user_input is not None:
+            self._use_local_broker = user_input.get(CONF_USE_LOCAL_BROKER, False)
+            self._mac = entry.data[CONF_MAC]
+
+            if self._use_local_broker:
+                return await self.async_step_reconfigure_broker()
+
+            if current_use_local:
+                # Switching from local → AWS: need to provision certificates.
+                self._provision_task = None
+                return await self.async_step_reconfigure_provision()
+
+            # Already on AWS, nothing structural changed — just reload.
+            return self.async_update_reload_and_abort(entry, data=entry.data)
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({
+                vol.Optional(CONF_USE_LOCAL_BROKER, default=current_use_local): bool,
+            }),
+            description_placeholders={"mac": entry.data[CONF_MAC]},
+        )
+
+    async def async_step_reconfigure_broker(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        current_host = entry.data.get(CONF_LOCAL_BROKER_HOST, "localhost")
+        current_port = entry.data.get(CONF_LOCAL_BROKER_PORT, DEFAULT_LOCAL_BROKER_PORT)
+
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                title=f"Aquatek {entry.data[CONF_MAC]} (local)",
+                data={
+                    CONF_MAC: entry.data[CONF_MAC],
+                    CONF_USE_LOCAL_BROKER: True,
+                    CONF_LOCAL_BROKER_HOST: user_input[CONF_LOCAL_BROKER_HOST],
+                    CONF_LOCAL_BROKER_PORT: user_input[CONF_LOCAL_BROKER_PORT],
+                },
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure_broker",
+            data_schema=vol.Schema({
+                vol.Required(CONF_LOCAL_BROKER_HOST, default=current_host): str,
+                vol.Required(CONF_LOCAL_BROKER_PORT, default=current_port): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=65535)
+                ),
+            }),
+        )
+
+    async def async_step_reconfigure_provision(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if not self._provision_task:
+            self._provision_task = self.hass.async_create_task(
+                self._do_provision()
+            )
+            return self.async_show_progress(
+                step_id="reconfigure_provision",
+                progress_action="provision",
+                progress_task=self._provision_task,
+            )
+
+        try:
+            await self._provision_task
+        except Exception:
+            _LOGGER.exception("Certificate provisioning failed during reconfigure")
+            return self.async_show_progress_done(next_step_id="reconfigure_provision_failed")
+
+        return self.async_show_progress_done(next_step_id="reconfigure_provision_done")
+
+    async def async_step_reconfigure_provision_done(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        return self.async_update_reload_and_abort(
+            entry,
+            title=f"Aquatek {entry.data[CONF_MAC]}",
+            data={
+                CONF_MAC: entry.data[CONF_MAC],
+                CONF_USE_LOCAL_BROKER: False,
+            },
+        )
+
+    async def async_step_reconfigure_provision_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({
+                vol.Optional(
+                    CONF_USE_LOCAL_BROKER,
+                    default=entry.data.get(CONF_USE_LOCAL_BROKER, False),
+                ): bool,
+            }),
+            errors={"base": "provision_failed"},
+            description_placeholders={"mac": entry.data[CONF_MAC]},
+        )
