@@ -14,8 +14,8 @@ Communicates via AWS IoT MQTT (cloud) by default. An optional local broker mode 
 
 ## Installation
 
-1. In HACS, add this repository as a custom repository (Integration category)
-2. Install **Dontek Aquatek**
+1. In HACS, click **⋮ → Custom repositories** and add `https://github.com/jahmai/hacs-dontek-aquatek` with category **Integration**
+2. Click **Download** on the Dontek Aquatek card
 3. Restart Home Assistant
 4. Go to **Settings → Devices & Services → Add Integration** and search for *Aquatek*
 
