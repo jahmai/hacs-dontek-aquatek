@@ -56,13 +56,16 @@ All topics use a `dontek` prefix followed by the MAC (confirmed against live har
 
 | Direction | Topic | Purpose |
 |-----------|-------|---------|
-| Subscribe | `dontek{mac}/status/psw` | Device pushes state updates |
-| Publish | `dontek{mac}/cmd/psw` | Send commands to device |
-| Subscribe | `$aws/things/{MAC_UPPER}_VERSION/shadow/get/+` | Firmware version (uppercased) |
+| Subscribe | `dontek{mac}/status/psw` | Device pushes state updates and OTA progress |
+| Publish | `dontek{mac}/cmd/psw` | Send commands to device (Modbus writes **and** OTA trigger) |
+| Device → broker | `dontek/logging/{mac}` | Device telemetry/logs (Dontek backend only; note: MAC is a suffix here, not a prefix) |
+| Subscribe | `$aws/things/{MAC_UPPER}_VERSION/shadow/get/+` | Firmware version shadow (uppercased MAC) |
 
 `{mac}` is lowercase no-colon hex (e.g. `deadbeefcafe`).
 
-The `pswpolicy` IoT policy grants `iot:Connect`, `iot:Subscribe`, and `iot:Publish` scoped to the `dontek{mac}/` prefix. Subscribing to any topic without this prefix is denied — the broker drops the connection immediately after the SUBSCRIBE packet.
+OTA is triggered via `dontek{mac}/cmd/psw` using the standard message format with reg `65280`, val `[6880]`, and an extra `valueString` field containing the firmware URL. There is no separate OTA topic.
+
+The `pswpolicy` IoT policy grants `iot:Connect`, `iot:Subscribe`, and `iot:Publish` scoped to the `dontek{mac}/` prefix. Subscribing to any topic outside this prefix is denied — the broker drops the connection immediately after the SUBSCRIBE packet. The `dontek/logging/{mac}` topic uses a different prefix and is not accessible with a provisioned cert; it is readable by the Dontek backend only.
 
 ### Message Format
 
