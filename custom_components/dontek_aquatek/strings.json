@@ -6,11 +6,11 @@
         "description": "Enter the MAC address from the QR code sticker on your Aquatek controller.",
         "data": {
           "device_id": "Device ID",
-          "use_local_broker": "Use local MQTT broker"
+          "use_local_broker": "Use Aquatek MQTT Server"
         },
         "data_description": {
           "device_id": "Scan the QR code sticker on your controller, or enter the number printed below it (e.g. 12345678901234567)",
-          "use_local_broker": "Connect to a local MQTT broker instead of AWS IoT Cloud (requires patched firmware)"
+          "use_local_broker": "Connect via the hacs-dontek-aquatek-mqtt-server component instead of AWS IoT Cloud (requires patched firmware)"
         }
       },
       "local_broker": {
