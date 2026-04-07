@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -45,6 +47,7 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
         self.mqtt_client = mqtt_client
         self._connection_state = ConnectionState.DISCONNECTED
         self._initial_data_event: asyncio.Event = asyncio.Event()
+        self.last_message_time: datetime | None = None
 
     async def async_setup(self) -> None:
         """Connect the MQTT client with callbacks wired to this coordinator."""
@@ -52,10 +55,7 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
 
     @property
     def is_connected(self) -> bool:
-        return self._connection_state in (
-            ConnectionState.CONNECTED,
-            ConnectionState.ONLINE,
-        )
+        return self._connection_state == ConnectionState.CONNECTED
 
     @property
     def connection_state(self) -> ConnectionState:
@@ -99,6 +99,7 @@ class AquatekCoordinator(DataUpdateCoordinator[dict[int, int]]):
         if self.data is None:
             self.data = {}
 
+        self.last_message_time = dt_util.utcnow()
         changed = False
 
         if reg == 1 and len(values) > 2:

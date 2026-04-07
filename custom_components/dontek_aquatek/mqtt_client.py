@@ -40,7 +40,6 @@ class ConnectionState(Enum):
     DISCONNECTED = "Disconnected"
     CONNECTING = "Connecting"
     CONNECTED = "Connected"
-    ONLINE = "Online"  # connected + received at least one status message
 
 
 MessageCallback = Callable[[int, list[int]], None]
@@ -204,9 +203,6 @@ class AquatekMQTTClient:
         import time  # noqa: PLC0415
         self._last_message_time = time.monotonic()
 
-        if self._state != ConnectionState.ONLINE:
-            self._set_state(ConnectionState.ONLINE)
-
         self._message_callback(reg, vals)
 
     async def disconnect(self) -> None:
@@ -296,13 +292,10 @@ class AquatekMQTTClient:
         import time  # noqa: PLC0415
         while True:
             await asyncio.sleep(30)
-            if self._state == ConnectionState.ONLINE:
+            if self._state == ConnectionState.CONNECTED and self._last_message_time:
                 age = time.monotonic() - self._last_message_time
                 if age > WATCHDOG_TIMEOUT:
-                    _LOGGER.warning(
-                        "No status message for %.0fs — marking offline", age
-                    )
-                    self._set_state(ConnectionState.CONNECTED)
+                    _LOGGER.warning("No status message for %.0fs", age)
 
 
 class AquatekLocalMQTTClient:
@@ -432,9 +425,6 @@ class AquatekLocalMQTTClient:
         except (json.JSONDecodeError, KeyError, ValueError):
             _LOGGER.debug("Unparseable message: %s", payload[:120])
             return
-
-        if self._state != ConnectionState.ONLINE:
-            self._set_state(ConnectionState.ONLINE)
 
         self._message_callback(reg, vals)
 

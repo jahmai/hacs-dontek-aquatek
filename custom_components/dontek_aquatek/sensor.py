@@ -44,6 +44,7 @@ async def async_setup_entry(
     coordinator: AquatekCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         AquatekConnectionSensor(coordinator),
+        AquatekLastMessageSensor(coordinator),
         AquatekDeviceNameSensor(coordinator),
         AquatekFilterPumpStatusSensor(coordinator),
         AquatekHeater1StatusSensor(coordinator),
@@ -69,6 +70,25 @@ class AquatekConnectionSensor(AquatekEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         return self.coordinator.connection_state.value
+
+
+class AquatekLastMessageSensor(AquatekEntity, SensorEntity):
+    """Timestamp of the last MQTT message received from the device."""
+
+    _attr_name = "Last Message"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-check"
+
+    def __init__(self, coordinator: AquatekCoordinator) -> None:
+        super().__init__(coordinator, "last_message")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self):
+        return self.coordinator.last_message_time
 
 
 class AquatekDeviceNameSensor(AquatekEntity, SensorEntity):
