@@ -93,6 +93,8 @@ class AquatekMQTTClient:
         self._loop = asyncio.get_running_loop()
         self._set_state(ConnectionState.CONNECTING)
         await self._do_connect()
+        if self._state == ConnectionState.DISCONNECTED:
+            self._schedule_reconnect()
 
     def _build_mqtt_connection(self):
         """Build the awsiotsdk connection object (blocking — run in executor)."""
@@ -171,7 +173,6 @@ class AquatekMQTTClient:
         except Exception:
             _LOGGER.exception("Failed to connect to AWS IoT MQTT")
             self._set_state(ConnectionState.DISCONNECTED)
-            self._schedule_reconnect()
 
     def _on_interrupted(self, connection, error, **kwargs) -> None:
         _LOGGER.warning("MQTT connection interrupted: %s", error)
@@ -262,8 +263,10 @@ class AquatekMQTTClient:
             _LOGGER.info("Attempting MQTT reconnect...")
             await self._do_connect()
             if self._state == ConnectionState.DISCONNECTED:
+                # Assign directly — _schedule_reconnect's guard would block us
+                # because this task is still running at this point.
                 next_delay = min(delay * 2, RECONNECT_MAX)
-                self._schedule_reconnect(next_delay)
+                self._reconnect_task = asyncio.create_task(self._reconnect_after(next_delay))
 
     async def _poll_state(self) -> None:
         """Send a full-state-dump request to the device."""
@@ -339,6 +342,8 @@ class AquatekLocalMQTTClient:
         self._loop = asyncio.get_running_loop()
         self._set_state(ConnectionState.CONNECTING)
         await self._do_connect()
+        if self._state == ConnectionState.DISCONNECTED:
+            self._schedule_reconnect()
 
     async def _do_connect(self) -> None:
         import paho.mqtt.client as mqtt  # noqa: PLC0415
@@ -348,6 +353,7 @@ class AquatekLocalMQTTClient:
                 self._client.loop_stop()
             except Exception:
                 pass
+            self._client = None
 
         try:
             from paho.mqtt.client import CallbackAPIVersion  # noqa: PLC0415
@@ -369,19 +375,40 @@ class AquatekLocalMQTTClient:
         self._connect_future = connect_future
 
         try:
-            await self._loop.run_in_executor(
-                None, lambda: client.connect(self._host, self._port, keepalive=60)
+            # Timeout the TCP connect — without this, an unreachable host blocks
+            # a thread for the OS TCP timeout (~20 s). The abandoned thread will
+            # eventually resolve harmlessly; stale paho callbacks are ignored via
+            # the `client is not self._client` guard in each callback.
+            await asyncio.wait_for(
+                self._loop.run_in_executor(
+                    None, lambda: client.connect(self._host, self._port, keepalive=60)
+                ),
+                timeout=10.0,
             )
             client.loop_start()
             await asyncio.wait_for(connect_future, timeout=10.0)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Timed out connecting to local MQTT broker at %s:%d", self._host, self._port
+            )
+            try:
+                client.loop_stop()
+            except Exception:
+                pass
+            self._set_state(ConnectionState.DISCONNECTED)
         except Exception:
             _LOGGER.exception(
                 "Failed to connect to local MQTT broker at %s:%d", self._host, self._port
             )
+            try:
+                client.loop_stop()
+            except Exception:
+                pass
             self._set_state(ConnectionState.DISCONNECTED)
-            self._schedule_reconnect()
 
     def _on_paho_connect(self, client, userdata, flags, rc) -> None:
+        if client is not self._client:
+            return  # stale callback from a superseded connection attempt
         assert self._loop is not None
         if rc == 0:
             self._loop.call_soon_threadsafe(self._handle_connected)
@@ -404,6 +431,8 @@ class AquatekLocalMQTTClient:
             self._connect_future.set_exception(exc)
 
     def _on_paho_disconnect(self, client, userdata, rc) -> None:
+        if client is not self._client:
+            return  # stale callback from a superseded connection attempt
         assert self._loop is not None
         self._loop.call_soon_threadsafe(self._handle_disconnected, rc)
 
@@ -414,6 +443,8 @@ class AquatekLocalMQTTClient:
             self._schedule_reconnect()
 
     def _on_paho_message(self, client, userdata, msg) -> None:
+        if client is not self._client:
+            return  # stale callback from a superseded connection attempt
         assert self._loop is not None
         self._loop.call_soon_threadsafe(self._handle_message, msg.payload)
 
@@ -464,4 +495,7 @@ class AquatekLocalMQTTClient:
             _LOGGER.info("Attempting local MQTT reconnect...")
             await self._do_connect()
             if self._state == ConnectionState.DISCONNECTED:
-                self._schedule_reconnect(min(delay * 2, RECONNECT_MAX))
+                # Assign directly — _schedule_reconnect's guard would block us
+                # because this task is still running at this point.
+                next_delay = min(delay * 2, RECONNECT_MAX)
+                self._reconnect_task = asyncio.create_task(self._reconnect_after(next_delay))
