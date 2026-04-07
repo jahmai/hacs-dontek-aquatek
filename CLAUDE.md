@@ -347,6 +347,7 @@ Entities must be **auto-discovered** from the socket config registers on connect
 | `sensor` | Filter Pump Status | 92 (state in high byte, speed in low byte) |
 | `sensor` | Temperature Sensor 1/2/3 | 55+(n-1); type from 65314+(n-1) |
 | `sensor` | Connection Status | — |
+| `sensor` | Last Message | Timestamp of last MQTT message received |
 | `sensor` | Device Name | 65488–65495 |
 | `button` | Refresh | Sends full state dump request |
 
@@ -362,6 +363,13 @@ The flow:
 2. User selects connection mode (AWS Cloud or Local Broker toggle)
 3. **AWS Cloud:** provisions an AWS IoT certificate (Cognito → IoT → attach policy) → creates config entry
 4. **Local Broker:** prompts for host + port (default `localhost:11883`) → creates config entry (no cert provisioning)
+
+### Reconfigure Flow
+
+Accessible via **Settings → Devices & Services → Dontek Aquatek → ⋮ → Reconfigure**. Allows switching connection mode without deleting and re-adding the integration:
+- **AWS → Local:** shows host/port form (pre-populated with current values) → updates entry + reloads
+- **Local → AWS:** runs certificate provisioning → updates entry + reloads
+- **No change:** reloads immediately
 
 ### Connection Modes
 

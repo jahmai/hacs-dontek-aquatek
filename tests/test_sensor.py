@@ -1,10 +1,13 @@
 """Tests for sensor.py — status sensors and helper functions."""
 from unittest.mock import MagicMock
 
+from datetime import datetime, timezone
+
 from custom_components.dontek_aquatek.sensor import (
     AquatekFilterPumpStatusSensor,
     AquatekHeater1StatusSensor,
     AquatekHeater2StatusSensor,
+    AquatekLastMessageSensor,
     AquatekTemperatureSensor,
     _decode_last_ran,
 )
@@ -439,3 +442,32 @@ def test_temperature_sensor_attrs_unknown_type():
 def test_temperature_sensor_attrs_empty_when_no_data():
     sensor = _temp_sensor(1, {})
     assert sensor.extra_state_attributes == {}
+
+
+# ---------------------------------------------------------------------------
+# AquatekLastMessageSensor
+# ---------------------------------------------------------------------------
+
+
+def _last_message_sensor(last_message_time):
+    coordinator = MagicMock()
+    coordinator.last_message_time = last_message_time
+    sensor = AquatekLastMessageSensor.__new__(AquatekLastMessageSensor)
+    sensor.coordinator = coordinator
+    return sensor
+
+
+def test_last_message_none_before_first_message():
+    sensor = _last_message_sensor(None)
+    assert sensor.native_value is None
+
+
+def test_last_message_returns_datetime():
+    dt = datetime(2026, 4, 7, 12, 34, 56, tzinfo=timezone.utc)
+    sensor = _last_message_sensor(dt)
+    assert sensor.native_value == dt
+
+
+def test_last_message_always_available():
+    sensor = _last_message_sensor(None)
+    assert sensor.available is True

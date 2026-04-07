@@ -39,6 +39,8 @@ Accepted formats:
 
 Leave the **Use local MQTT broker** toggle off. The integration will automatically provision an AWS IoT certificate and connect to your controller via the cloud.
 
+To switch connection mode later, use **Settings → Devices & Services → Dontek Aquatek → ⋮ → Reconfigure**.
+
 ### Local Broker (advanced)
 
 Enable the **Use local MQTT broker** toggle if you are running a local MQTT broker (e.g. [hacs-dontek-aquatek-mqtt-server](https://github.com/jahmai/hacs-dontek-aquatek-mqtt-server)) and have patched your controller firmware to point at it. You will be prompted for the broker host and port (default `localhost:11883`). No AWS account or certificate provisioning is required in this mode.
@@ -78,7 +80,7 @@ Enable the **Use local MQTT broker** toggle if you are running a local MQTT brok
 | Number | Filter Duty Cycle (0–100%) |
 | Sensor | Heater 1 Status, Heater 2 Status, Filter Pump Status |
 | Sensor | Temperature Sensor 1 / 2 / 3 |
-| Sensor | Connection Status, Device Name |
+| Sensor | Connection Status, Last Message (timestamp), Device Name |
 | Button | Refresh (request immediate state update) |
 
 Socket output entities are auto-discovered at startup from the device's socket configuration registers — the set of entities will match however your controller is configured in the app.

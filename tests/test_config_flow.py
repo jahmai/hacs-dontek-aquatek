@@ -7,7 +7,14 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dontek_aquatek.config_flow import _parse_mac
-from custom_components.dontek_aquatek.const import CONF_MAC, DOMAIN
+from custom_components.dontek_aquatek.const import (
+    CONF_LOCAL_BROKER_HOST,
+    CONF_LOCAL_BROKER_PORT,
+    CONF_MAC,
+    CONF_USE_LOCAL_BROKER,
+    DEFAULT_LOCAL_BROKER_PORT,
+    DOMAIN,
+)
 
 from .conftest import MAC, FAKE_CERTS
 
@@ -191,3 +198,179 @@ async def test_full_flow_provision_failure_shows_error(hass):
 
     assert result["type"] == FlowResultType.FORM
     assert result["errors"] == {"base": "provision_failed"}
+
+
+# ---------------------------------------------------------------------------
+# Config flow — local broker
+# ---------------------------------------------------------------------------
+
+
+async def test_local_broker_flow_creates_entry(hass):
+    """Toggling local broker skips provisioning and prompts for host/port."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_MAC: MAC, CONF_USE_LOCAL_BROKER: True},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "local_broker"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_LOCAL_BROKER_HOST: "192.168.1.10", CONF_LOCAL_BROKER_PORT: 11883},
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_USE_LOCAL_BROKER] is True
+    assert result["data"][CONF_LOCAL_BROKER_HOST] == "192.168.1.10"
+    assert result["data"][CONF_LOCAL_BROKER_PORT] == 11883
+    assert result["data"][CONF_MAC] == MAC
+
+
+def test_local_broker_default_port_is_nonstandard():
+    """Default port avoids clashing with standard Mosquitto on 1883."""
+    assert DEFAULT_LOCAL_BROKER_PORT != 1883
+    assert DEFAULT_LOCAL_BROKER_PORT == 11883
+
+
+# ---------------------------------------------------------------------------
+# Reconfigure flow
+# ---------------------------------------------------------------------------
+
+
+async def test_reconfigure_aws_to_local(hass):
+    """Reconfiguring from AWS to local broker updates entry without provisioning."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_MAC: MAC, CONF_USE_LOCAL_BROKER: False},
+        unique_id=MAC,
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.dontek_aquatek.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USE_LOCAL_BROKER: True},
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure_broker"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_LOCAL_BROKER_HOST: "localhost", CONF_LOCAL_BROKER_PORT: 11883},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_USE_LOCAL_BROKER] is True
+    assert entry.data[CONF_LOCAL_BROKER_HOST] == "localhost"
+    assert entry.data[CONF_LOCAL_BROKER_PORT] == 11883
+
+
+async def test_reconfigure_local_to_aws_provisions(hass):
+    """Reconfiguring from local to AWS runs provisioning."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_MAC: MAC,
+            CONF_USE_LOCAL_BROKER: True,
+            CONF_LOCAL_BROKER_HOST: "localhost",
+            CONF_LOCAL_BROKER_PORT: 11883,
+        },
+        unique_id=MAC,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dontek_aquatek.config_flow.provision_and_store",
+        return_value=FAKE_CERTS,
+    ), patch("custom_components.dontek_aquatek.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USE_LOCAL_BROKER: False},
+        )
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert result["step_id"] == "reconfigure_provision"
+
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_USE_LOCAL_BROKER] is False
+
+
+async def test_reconfigure_broker_host_port_update(hass):
+    """Reconfiguring host/port on an existing local broker entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_MAC: MAC,
+            CONF_USE_LOCAL_BROKER: True,
+            CONF_LOCAL_BROKER_HOST: "localhost",
+            CONF_LOCAL_BROKER_PORT: 11883,
+        },
+        unique_id=MAC,
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.dontek_aquatek.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USE_LOCAL_BROKER: True},
+        )
+        assert result["step_id"] == "reconfigure_broker"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_LOCAL_BROKER_HOST: "192.168.1.50", CONF_LOCAL_BROKER_PORT: 1883},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_LOCAL_BROKER_HOST] == "192.168.1.50"
+    assert entry.data[CONF_LOCAL_BROKER_PORT] == 1883
+
+
+async def test_reconfigure_aws_no_change_reloads(hass):
+    """Reconfiguring an AWS entry back to AWS just reloads without provisioning."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_MAC: MAC, CONF_USE_LOCAL_BROKER: False},
+        unique_id=MAC,
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.dontek_aquatek.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USE_LOCAL_BROKER: False},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
