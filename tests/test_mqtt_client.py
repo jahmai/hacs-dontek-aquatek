@@ -141,3 +141,27 @@ def test_local_client_id_uses_normalised_mac():
 def test_local_client_initial_state_disconnected():
     client = _make_local_client("aabbccddeeff")
     assert client.state == ConnectionState.DISCONNECTED
+
+
+async def test_local_client_connect_uses_tls():
+    """_do_connect must enable TLS with server cert validation disabled."""
+    import asyncio
+    import ssl
+    from unittest.mock import patch
+
+    mock_paho = MagicMock()
+    client = _make_local_client("aabbccddeeff")
+    client._loop = asyncio.get_event_loop()
+
+    # Return a pre-failed future so _do_connect aborts quickly after TLS setup.
+    # tls_set/tls_insecure_set are called before run_in_executor, so they'll
+    # have been called regardless of how the connect attempt ends.
+    fail_future = asyncio.get_event_loop().create_future()
+    fail_future.set_exception(OSError("connection refused"))
+
+    with patch("paho.mqtt.client.Client", return_value=mock_paho), \
+         patch.object(client._loop, "run_in_executor", return_value=fail_future):
+        await client._do_connect()
+
+    mock_paho.tls_set.assert_called_once_with(cert_reqs=ssl.CERT_NONE)
+    mock_paho.tls_insecure_set.assert_called_once_with(True)

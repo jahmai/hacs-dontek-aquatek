@@ -45,6 +45,8 @@ To switch connection mode later, use **Settings → Devices & Services → Donte
 
 Enable the **Use local MQTT broker** toggle if you are running a local MQTT broker (e.g. [hacs-dontek-aquatek-mqtt-server](https://github.com/jahmai/hacs-dontek-aquatek-mqtt-server)) and have patched your controller firmware to point at it. You will be prompted for the broker host and port (default `localhost:11883`). No AWS account or certificate provisioning is required in this mode.
 
+The connection uses TLS with server certificate validation disabled — the firmware requires TLS but cannot validate a self-signed broker certificate.
+
 ## Entities
 
 | Platform | Entity |
