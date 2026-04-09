@@ -219,20 +219,20 @@ async def test_local_broker_flow_creates_entry(hass):
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {CONF_LOCAL_BROKER_HOST: "192.168.1.10", CONF_LOCAL_BROKER_PORT: 11883},
+        {CONF_LOCAL_BROKER_HOST: "192.168.1.10", CONF_LOCAL_BROKER_PORT: 1884},
     )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USE_LOCAL_BROKER] is True
     assert result["data"][CONF_LOCAL_BROKER_HOST] == "192.168.1.10"
-    assert result["data"][CONF_LOCAL_BROKER_PORT] == 11883
+    assert result["data"][CONF_LOCAL_BROKER_PORT] == 1884
     assert result["data"][CONF_MAC] == MAC
 
 
 def test_local_broker_default_port_is_nonstandard():
     """Default port avoids clashing with standard Mosquitto on 1883."""
     assert DEFAULT_LOCAL_BROKER_PORT != 1883
-    assert DEFAULT_LOCAL_BROKER_PORT == 11883
+    assert DEFAULT_LOCAL_BROKER_PORT == 1884
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +266,7 @@ async def test_reconfigure_aws_to_local(hass):
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_LOCAL_BROKER_HOST: "localhost", CONF_LOCAL_BROKER_PORT: 11883},
+            {CONF_LOCAL_BROKER_HOST: "localhost", CONF_LOCAL_BROKER_PORT: 1884},
         )
         await hass.async_block_till_done()
 
@@ -274,7 +274,7 @@ async def test_reconfigure_aws_to_local(hass):
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_USE_LOCAL_BROKER] is True
     assert entry.data[CONF_LOCAL_BROKER_HOST] == "localhost"
-    assert entry.data[CONF_LOCAL_BROKER_PORT] == 11883
+    assert entry.data[CONF_LOCAL_BROKER_PORT] == 1884
 
 
 async def test_reconfigure_local_to_aws_provisions(hass):
@@ -285,7 +285,7 @@ async def test_reconfigure_local_to_aws_provisions(hass):
             CONF_MAC: MAC,
             CONF_USE_LOCAL_BROKER: True,
             CONF_LOCAL_BROKER_HOST: "localhost",
-            CONF_LOCAL_BROKER_PORT: 11883,
+            CONF_LOCAL_BROKER_PORT: 1884,
         },
         unique_id=MAC,
     )
@@ -323,7 +323,7 @@ async def test_reconfigure_broker_host_port_update(hass):
             CONF_MAC: MAC,
             CONF_USE_LOCAL_BROKER: True,
             CONF_LOCAL_BROKER_HOST: "localhost",
-            CONF_LOCAL_BROKER_PORT: 11883,
+            CONF_LOCAL_BROKER_PORT: 1884,
         },
         unique_id=MAC,
     )

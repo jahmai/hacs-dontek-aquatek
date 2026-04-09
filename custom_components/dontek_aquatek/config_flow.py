@@ -65,7 +65,7 @@ STEP_USER_SCHEMA = vol.Schema({
 STEP_LOCAL_BROKER_SCHEMA = vol.Schema({
     vol.Required(CONF_LOCAL_BROKER_HOST, default="localhost"): str,
     vol.Required(CONF_LOCAL_BROKER_PORT, default=DEFAULT_LOCAL_BROKER_PORT): vol.All(
-        vol.Coerce(int), vol.Range(min=1, max=65535)
+        vol.Coerce(int), vol.Range(min=1, max=2047)
     ),
 })
 
@@ -258,7 +258,7 @@ class AquatekConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required(CONF_LOCAL_BROKER_HOST, default=current_host): str,
                 vol.Required(CONF_LOCAL_BROKER_PORT, default=current_port): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=65535)
+                    vol.Coerce(int), vol.Range(min=1, max=2047)
                 ),
             }),
         )
