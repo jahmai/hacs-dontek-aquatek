@@ -382,7 +382,7 @@ Accessible via **Settings → Devices & Services → Dontek Aquatek → ⋮ → 
 
 **Local Broker** — `CONF_USE_LOCAL_BROKER = True`
 - Connects to a plain-TCP MQTT broker (e.g. the `hacs-dontek-aquatek-mqtt-server` project)
-- No TLS, no AWS, no cert provisioning
+- TLS enabled but server certificate validation disabled (`ssl.CERT_NONE` + `tls_insecure_set(True)`) — firmware requires TLS but cannot validate a self-signed broker cert
 - Requires firmware patched to point at the local broker
 - Config entry also stores `CONF_LOCAL_BROKER_HOST` and `CONF_LOCAL_BROKER_PORT`
 - Default port `11883` (non-standard to avoid clashing with Mosquitto on 1883)
@@ -399,7 +399,7 @@ Accessible via **Settings → Devices & Services → Dontek Aquatek → ⋮ → 
 |------|---------|
 | `const.py` | All constants and register map |
 | `auth.py` | AWS certificate provisioning and HA storage |
-| `mqtt_client.py` | `AquatekMQTTClient` (AWS/TLS) and `AquatekLocalMQTTClient` (plain TCP) |
+| `mqtt_client.py` | `AquatekMQTTClient` (AWS/mutual TLS) and `AquatekLocalMQTTClient` (TLS, no cert validation) |
 | `coordinator.py` | Push-based DataUpdateCoordinator |
 | `config_flow.py` | HA config flow UI — AWS Cloud or Local Broker selection |
 | `entity_base.py` | Shared base class |

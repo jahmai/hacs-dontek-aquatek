@@ -369,6 +369,13 @@ class AquatekLocalMQTTClient:
         client.on_connect = self._on_paho_connect
         client.on_disconnect = self._on_paho_disconnect
         client.on_message = self._on_paho_message
+
+        # TLS without server certificate validation — the firmware requires TLS
+        # but cannot validate a self-signed broker cert.
+        import ssl  # noqa: PLC0415
+        client.tls_set(cert_reqs=ssl.CERT_NONE)
+        client.tls_insecure_set(True)
+
         self._client = client
 
         connect_future: asyncio.Future = self._loop.create_future()
