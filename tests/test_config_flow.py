@@ -232,7 +232,7 @@ async def test_local_broker_flow_creates_entry(hass):
 def test_local_broker_default_port_is_nonstandard():
     """Default port avoids clashing with standard Mosquitto on 1883."""
     assert DEFAULT_LOCAL_BROKER_PORT != 1883
-    assert DEFAULT_LOCAL_BROKER_PORT == 1884
+    assert DEFAULT_LOCAL_BROKER_PORT == 883
 
 
 # ---------------------------------------------------------------------------
