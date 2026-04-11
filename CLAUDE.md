@@ -58,14 +58,14 @@ All topics use a `dontek` prefix followed by the MAC (confirmed against live har
 |-----------|-------|---------|
 | Subscribe | `dontek{mac}/status/psw` | Device pushes state updates and OTA progress |
 | Publish | `dontek{mac}/cmd/psw` | Send commands to device (Modbus writes **and** OTA trigger) |
-| Device → broker | `dontek/logging/{mac}` | Device telemetry/logs (note: MAC is a suffix, not a prefix); subscribed to in local broker mode only |
+| Device → broker | `dontek/logging/+` | Device telemetry/logs; subscribed to in local broker mode only. Suffix observed as `THERALINK` — not the MAC; likely device name from NVS or a hardcoded model string (unconfirmed) |
 | Subscribe | `$aws/things/{MAC_UPPER}_VERSION/shadow/get/+` | Firmware version shadow (uppercased MAC) |
 
 `{mac}` is lowercase no-colon hex (e.g. `deadbeefcafe`).
 
 OTA is triggered via `dontek{mac}/cmd/psw` using the standard message format with reg `65280`, val `[6880]`, and an extra `valueString` field containing the firmware URL. There is no separate OTA topic.
 
-The `pswpolicy` IoT policy grants `iot:Connect`, `iot:Subscribe`, and `iot:Publish` scoped to the `dontek{mac}/` prefix. Subscribing to any topic outside this prefix is denied — the broker drops the connection immediately after the SUBSCRIBE packet. The `dontek/logging/{mac}` topic uses a different prefix and is therefore not accessible via AWS with a provisioned cert; it is only subscribable via a local broker.
+The `pswpolicy` IoT policy grants `iot:Connect`, `iot:Subscribe`, and `iot:Publish` scoped to the `dontek{mac}/` prefix. Subscribing to any topic outside this prefix is denied — the broker drops the connection immediately after the SUBSCRIBE packet. The `dontek/logging/+` topic uses a different prefix and is therefore not accessible via AWS with a provisioned cert; it is only subscribable via a local broker.
 
 ### Message Format
 

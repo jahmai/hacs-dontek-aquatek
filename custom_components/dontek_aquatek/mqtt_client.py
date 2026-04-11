@@ -300,7 +300,7 @@ class AquatekLocalMQTTClient:
 
         self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
         self._topic_cmd = TOPIC_CMD.format(mac=mac_norm)
-        self._topic_logging = TOPIC_LOGGING.format(mac=mac_norm)
+        self._topic_logging = TOPIC_LOGGING
         self._client_id = f"aquatek-{mac_norm}-{uuid.uuid4().hex[:8]}"
 
     @property
