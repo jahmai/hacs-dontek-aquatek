@@ -165,3 +165,74 @@ async def test_local_client_connect_uses_tls():
 
     mock_paho.tls_set.assert_called_once_with(cert_reqs=ssl.CERT_NONE)
     mock_paho.tls_insecure_set.assert_called_once_with(True)
+
+
+# ---------------------------------------------------------------------------
+# AquatekLocalMQTTClient — periodic polling and post-command poll
+# ---------------------------------------------------------------------------
+
+
+def _make_connected_local_client():
+    """Return a local client wired up as if just connected (no real broker)."""
+    import asyncio
+    client = _make_local_client("aabbccddeeff")
+    client._loop = asyncio.get_event_loop()
+    client._client = MagicMock()
+    client._client.publish.return_value = MagicMock(rc=0)
+    client._state = ConnectionState.CONNECTED
+    return client
+
+
+async def test_poll_loop_started_on_connect():
+    """_handle_connected must start the poll loop task."""
+    client = _make_connected_local_client()
+    client._connect_future = client._loop.create_future()
+    client._connect_future.set_result(True)
+
+    client._handle_connected()
+
+    assert client._poll_task is not None
+    assert not client._poll_task.done()
+    client._poll_task.cancel()
+
+
+async def test_poll_loop_cancelled_on_disconnect():
+    """_handle_disconnected must cancel the poll loop."""
+    from unittest.mock import patch
+    client = _make_connected_local_client()
+    client._connect_future = client._loop.create_future()
+    client._connect_future.set_result(True)
+    client._handle_connected()
+
+    with patch.object(client, "_schedule_reconnect"):
+        client._handle_disconnected(1)
+
+    assert client._poll_task is None
+
+
+async def test_publish_command_schedules_delayed_poll():
+    """A successful publish_command must schedule a delayed poll task."""
+    import asyncio
+    from unittest.mock import patch
+    client = _make_connected_local_client()
+
+    with patch("asyncio.create_task") as mock_create_task:
+        result = await client.publish_command(65336, [1])
+
+    assert result is True
+    mock_create_task.assert_called_once()
+    coro = mock_create_task.call_args[0][0]
+    assert "_delayed_poll" in coro.__qualname__
+    coro.close()  # prevent "coroutine was never awaited" warning
+
+
+async def test_poll_loop_cancelled_on_explicit_disconnect():
+    """disconnect() must cancel the poll loop."""
+    client = _make_connected_local_client()
+    client._connect_future = client._loop.create_future()
+    client._connect_future.set_result(True)
+    client._handle_connected()
+
+    await client.disconnect()
+
+    assert client._poll_task is None

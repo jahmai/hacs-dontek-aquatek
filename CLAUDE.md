@@ -385,7 +385,10 @@ Accessible via **Settings → Devices & Services → Dontek Aquatek → ⋮ → 
 - TLS enabled but server certificate validation disabled (`ssl.CERT_NONE` + `tls_insecure_set(True)`) — firmware requires TLS but cannot validate a self-signed broker cert
 - Requires firmware patched to point at the local broker
 - Config entry also stores `CONF_LOCAL_BROKER_HOST` and `CONF_LOCAL_BROKER_PORT`
-- Default port `11883` (non-standard to avoid clashing with Mosquitto on 1883)
+- Default port `883` (capped at 2047)
+- **Periodic state refresh**: polls the device every 5 seconds (safe for local connections; not done in AWS mode to avoid unnecessary cloud traffic)
+- **Post-command poll**: after each successful write command, requests a full state dump after a 1-second delay to capture any reactive register changes
+- Subscribes to `dontek/logging/+` in addition to the status topic
 
 ### Python Dependencies
 

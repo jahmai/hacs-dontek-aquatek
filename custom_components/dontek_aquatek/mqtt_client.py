@@ -296,6 +296,7 @@ class AquatekLocalMQTTClient:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task | None = None
         self._connect_future: asyncio.Future | None = None
 
         self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
@@ -406,6 +407,9 @@ class AquatekLocalMQTTClient:
         self._client.subscribe(self._topic_logging, qos=0)
         state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
         self._client.publish(self._topic_cmd, state_request, qos=0)
+        if self._poll_task:
+            self._poll_task.cancel()
+        self._poll_task = asyncio.create_task(self._poll_loop())
         _LOGGER.info("Connected to local MQTT broker at %s:%d", self._host, self._port)
 
     def _handle_connect_failed(self, exc: Exception) -> None:
@@ -421,6 +425,9 @@ class AquatekLocalMQTTClient:
     def _handle_disconnected(self, rc: int) -> None:
         if rc != 0:
             _LOGGER.warning("Local MQTT broker disconnected unexpectedly: rc=%d", rc)
+        if self._poll_task:
+            self._poll_task.cancel()
+            self._poll_task = None
         self._set_state(ConnectionState.DISCONNECTED)
         self._schedule_reconnect()
 
@@ -448,6 +455,9 @@ class AquatekLocalMQTTClient:
         if self._reconnect_task:
             self._reconnect_task.cancel()
             self._reconnect_task = None
+        if self._poll_task:
+            self._poll_task.cancel()
+            self._poll_task = None
         if self._client:
             try:
                 self._client.loop_stop()
@@ -467,7 +477,14 @@ class AquatekLocalMQTTClient:
             "modbusVal": values,
         })
         result = self._client.publish(self._topic_cmd, payload, qos=0)
+        if result.rc == 0:
+            asyncio.create_task(self._delayed_poll(1.0))
         return result.rc == 0
+
+    async def _delayed_poll(self, delay: float) -> None:
+        """Poll state after a short delay to pick up reactive register changes."""
+        await asyncio.sleep(delay)
+        await self._poll_state()
 
     async def _poll_state(self) -> None:
         """Send a full-state-dump request to the device."""
@@ -479,6 +496,12 @@ class AquatekLocalMQTTClient:
             _LOGGER.debug("Sent state poll request")
         except Exception:
             _LOGGER.debug("State poll failed")
+
+    async def _poll_loop(self) -> None:
+        """Periodically request a full state dump from the device."""
+        while True:
+            await asyncio.sleep(5)
+            await self._poll_state()
 
     def _schedule_reconnect(self, delay: float = RECONNECT_MIN) -> None:
         if self._reconnect_task and not self._reconnect_task.done():
