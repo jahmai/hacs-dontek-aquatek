@@ -433,10 +433,6 @@ class AquatekLocalMQTTClient:
         self._loop.call_soon_threadsafe(self._handle_message, msg.payload)
 
     def _handle_message(self, payload: bytes) -> None:
-        # The broker prepends a 2-byte big-endian length header before the JSON.
-        # Strip it if the payload starts with a non-JSON byte.
-        if payload and payload[0] != ord('{'):
-            payload = payload[2:]
         try:
             data = json.loads(payload)
             reg = int(data["modbusReg"])
