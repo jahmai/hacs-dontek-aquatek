@@ -494,6 +494,17 @@ class AquatekLocalMQTTClient:
         result = self._client.publish(self._topic_cmd, payload, qos=0)
         return result.rc == 0
 
+    async def _poll_state(self) -> None:
+        """Send a full-state-dump request to the device."""
+        if not self._client or self._state == ConnectionState.DISCONNECTED:
+            return
+        state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
+        try:
+            self._client.publish(self._topic_cmd, state_request, qos=0)
+            _LOGGER.debug("Sent state poll request")
+        except Exception:
+            _LOGGER.debug("State poll failed")
+
     def _schedule_reconnect(self, delay: float = RECONNECT_MIN) -> None:
         if self._reconnect_task and not self._reconnect_task.done():
             return
