@@ -426,8 +426,10 @@ class AquatekLocalMQTTClient:
 
     def _on_paho_message(self, client, userdata, msg) -> None:
         if client is not self._client:
+            _LOGGER.debug("Ignoring message on stale client: topic=%s", msg.topic)
             return  # stale callback from a superseded connection attempt
         assert self._loop is not None
+        _LOGGER.debug("Received message: topic=%s payload=%s", msg.topic, msg.payload[:120])
         self._loop.call_soon_threadsafe(self._handle_message, msg.payload)
 
     def _handle_message(self, payload: bytes) -> None:
@@ -436,9 +438,10 @@ class AquatekLocalMQTTClient:
             reg = int(data["modbusReg"])
             vals = [int(v) for v in data["modbusVal"]]
         except (json.JSONDecodeError, KeyError, ValueError):
-            _LOGGER.debug("Unparseable message: %s", payload[:120])
+            _LOGGER.warning("Unparseable message: %s", payload[:120])
             return
 
+        _LOGGER.debug("Dispatching reg=%d vals=%s", reg, vals)
         self._message_callback(reg, vals)
 
     async def disconnect(self) -> None:
