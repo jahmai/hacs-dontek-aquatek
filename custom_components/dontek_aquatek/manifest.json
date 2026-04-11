@@ -1,7 +1,7 @@
 {
   "domain": "dontek_aquatek",
   "name": "Dontek Aquatek",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "config_flow": true,
   "documentation": "https://github.com/jahmai/hacs-dontek-aquatek",
   "iot_class": "cloud_push",
