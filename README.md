@@ -43,9 +43,11 @@ To switch connection mode later, use **Settings → Devices & Services → Donte
 
 ### Local Broker (advanced)
 
-Enable the **Use local MQTT broker** toggle if you are running a local MQTT broker (e.g. [hacs-dontek-aquatek-mqtt-server](https://github.com/jahmai/hacs-dontek-aquatek-mqtt-server)) and have patched your controller firmware to point at it. You will be prompted for the broker host and port (default `localhost:11883`). No AWS account or certificate provisioning is required in this mode.
+Enable the **Use local MQTT broker** toggle if you are running a local MQTT broker (e.g. [hacs-dontek-aquatek-mqtt-server](https://github.com/jahmai/hacs-dontek-aquatek-mqtt-server)) and have patched your controller firmware to point at it. You will be prompted for the broker host and port (default `localhost:883`). No AWS account or certificate provisioning is required in this mode.
 
 The connection uses TLS with server certificate validation disabled — the firmware requires TLS but cannot validate a self-signed broker certificate.
+
+In local broker mode, entity state is refreshed every 5 seconds and immediately after each command, so the UI stays current without needing to manually press Refresh.
 
 ## Entities
 
