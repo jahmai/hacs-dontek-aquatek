@@ -33,7 +33,6 @@ DEFAULT_LOCAL_BROKER_PORT = 883
 # MQTT reconnect timing (seconds)
 RECONNECT_MIN = 2
 RECONNECT_MAX = 60
-WATCHDOG_TIMEOUT = 600  # mark offline if no status message in this many seconds (device heartbeat ~8min)
 
 # ---------------------------------------------------------------------------
 # Modbus register map — all confirmed against live hardware (2026-03-31)

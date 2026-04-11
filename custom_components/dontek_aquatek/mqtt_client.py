@@ -27,7 +27,6 @@ from .const import (
     TOPIC_LOGGING,
     TOPIC_SHADOW,
     TOPIC_STATUS,
-    WATCHDOG_TIMEOUT,
 )
 
 def _normalise_mac(mac: str) -> str:
@@ -69,8 +68,6 @@ class AquatekMQTTClient:
         self._mqtt_module = None
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_task: asyncio.Task | None = None
-        self._watchdog_task: asyncio.Task | None = None
-        self._last_message_time: float = 0.0
         self._loop: asyncio.AbstractEventLoop | None = None
 
         self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
@@ -166,11 +163,6 @@ class AquatekMQTTClient:
             await asyncio.wrap_future(pub_future)
             _LOGGER.debug("Sent state dump request")
 
-            # Start watchdog
-            if self._watchdog_task:
-                self._watchdog_task.cancel()
-            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
-
         except Exception:
             _LOGGER.exception("Failed to connect to AWS IoT MQTT")
             self._set_state(ConnectionState.DISCONNECTED)
@@ -202,9 +194,6 @@ class AquatekMQTTClient:
             _LOGGER.debug("Unparseable message: %s", payload[:120])
             return
 
-        import time  # noqa: PLC0415
-        self._last_message_time = time.monotonic()
-
         self._message_callback(reg, vals)
 
     async def disconnect(self) -> None:
@@ -212,9 +201,6 @@ class AquatekMQTTClient:
         if self._reconnect_task:
             self._reconnect_task.cancel()
             self._reconnect_task = None
-        if self._watchdog_task:
-            self._watchdog_task.cancel()
-            self._watchdog_task = None
 
         if self._connection:
             try:
@@ -286,20 +272,6 @@ class AquatekMQTTClient:
         except Exception:
             _LOGGER.debug("Periodic state poll failed")
 
-    async def _watchdog_loop(self) -> None:
-        """Check the connection is still live; reconnect if the device goes silent.
-
-        No periodic polling — state is refreshed on connect, after each write,
-        and on manual button press. This minimises unnecessary traffic to
-        Dontek's AWS IoT backend.
-        """
-        import time  # noqa: PLC0415
-        while True:
-            await asyncio.sleep(30)
-            if self._state == ConnectionState.CONNECTED and self._last_message_time:
-                age = time.monotonic() - self._last_message_time
-                if age > WATCHDOG_TIMEOUT:
-                    _LOGGER.warning("No status message for %.0fs", age)
 
 
 class AquatekLocalMQTTClient:
