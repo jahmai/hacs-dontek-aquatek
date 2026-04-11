@@ -24,6 +24,7 @@ from .const import (
     RECONNECT_MAX,
     RECONNECT_MIN,
     TOPIC_CMD,
+    TOPIC_LOGGING,
     TOPIC_SHADOW,
     TOPIC_STATUS,
     WATCHDOG_TIMEOUT,
@@ -327,6 +328,7 @@ class AquatekLocalMQTTClient:
 
         self._topic_status = TOPIC_STATUS.format(mac=mac_norm)
         self._topic_cmd = TOPIC_CMD.format(mac=mac_norm)
+        self._topic_logging = TOPIC_LOGGING.format(mac=mac_norm)
         self._client_id = f"aquatek-{mac_norm}-{uuid.uuid4().hex[:8]}"
 
     @property
@@ -429,6 +431,7 @@ class AquatekLocalMQTTClient:
             self._connect_future.set_result(True)
         self._set_state(ConnectionState.CONNECTED)
         self._client.subscribe(self._topic_status, qos=0)
+        self._client.subscribe(self._topic_logging, qos=0)
         state_request = json.dumps({"messageId": "read", "modbusReg": 1, "modbusVal": [1]})
         self._client.publish(self._topic_cmd, state_request, qos=0)
         _LOGGER.info("Connected to local MQTT broker at %s:%d", self._host, self._port)

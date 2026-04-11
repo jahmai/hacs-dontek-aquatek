@@ -13,6 +13,7 @@ IOT_POLICY_NAME = "pswpolicy"
 TOPIC_STATUS = "dontek{mac}/status/psw"
 TOPIC_CMD = "dontek{mac}/cmd/psw"
 TOPIC_SHADOW = "$aws/things/{mac_upper}_VERSION/shadow/get/+"
+TOPIC_LOGGING = "dontek/logging/{mac}"
 
 # Config entry keys
 # MAC address from the device sticker, normalised to lowercase no-colon hex.
