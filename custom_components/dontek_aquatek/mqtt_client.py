@@ -437,6 +437,9 @@ class AquatekLocalMQTTClient:
             return  # stale callback from a superseded connection attempt
         assert self._loop is not None
         _LOGGER.debug("Received message: topic=%s payload=%s", msg.topic, msg.payload[:120])
+        if msg.topic.startswith("dontek/logging/"):
+            _LOGGER.debug("Device log: %s", msg.payload.decode(errors="replace"))
+            return
         self._loop.call_soon_threadsafe(self._handle_message, msg.payload)
 
     def _handle_message(self, payload: bytes) -> None:

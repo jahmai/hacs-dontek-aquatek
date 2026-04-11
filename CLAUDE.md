@@ -58,7 +58,7 @@ All topics use a `dontek` prefix followed by the MAC (confirmed against live har
 |-----------|-------|---------|
 | Subscribe | `dontek{mac}/status/psw` | Device pushes state updates and OTA progress |
 | Publish | `dontek{mac}/cmd/psw` | Send commands to device (Modbus writes **and** OTA trigger) |
-| Device → broker | `dontek/logging/+` | Device telemetry/logs; subscribed to in local broker mode only. Suffix observed as `THERALINK` — not the MAC; likely device name from NVS or a hardcoded model string (unconfirmed) |
+| Device → broker | `dontek/logging/+` | Device telemetry/logs; subscribed to in local broker mode only. Suffix observed as `THERALINK`. Message format: `{"recordType":"faults","recordID":"UID_...","version":"1.16B2","ioVersion":"1.00B5",...}` — not Modbus format, logged at debug level only |
 | Subscribe | `$aws/things/{MAC_UPPER}_VERSION/shadow/get/+` | Firmware version shadow (uppercased MAC) |
 
 `{mac}` is lowercase no-colon hex (e.g. `deadbeefcafe`).
